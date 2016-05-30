@@ -8279,7 +8279,7 @@ module.exports={
   "_args": [
     [
       "csso@~2.0.0",
-      "/Users/ale/Documents/Code/svgo-compressor-ale/node_modules/svgo"
+      "/Users/ale/Documents/Code/svgo-compressor/node_modules/svgo"
     ]
   ],
   "_from": "csso@>=2.0.0 <2.1.0",
@@ -8313,7 +8313,7 @@ module.exports={
   "_shasum": "178b43a44621221c27756086f531e02f42900ee8",
   "_shrinkwrap": null,
   "_spec": "csso@~2.0.0",
-  "_where": "/Users/ale/Documents/Code/svgo-compressor-ale/node_modules/svgo",
+  "_where": "/Users/ale/Documents/Code/svgo-compressor/node_modules/svgo",
   "author": {
     "email": "skryzhanovsky@ya.ru",
     "name": "Sergey Kryzhanovsky",
@@ -29281,7 +29281,7 @@ var SketchPlugin = exports.SketchPlugin = {
   authorEmail: "ale@sketchapp.com",
   version: "1.3",
   identifier: "com.sketchapp.plugins.svgo-compressor",
-  homepage: "https:/github.com/bomberstudios/svgo-compressor",
+  homepage: "https:/github.com/BohemianCoding/svgo-compressor",
   compatibleVersion: 3.8,
   commands: {
     svgo: {
@@ -29448,7 +29448,7 @@ __globals.___svgo_run_handler_ = function (context, params) {
     "authorEmail": "ale@sketchapp.com",
     "version": "1.3",
     "identifier": "com.sketchapp.plugins.svgo-compressor",
-    "homepage": "https:/github.com/bomberstudios/svgo-compressor",
+    "homepage": "https:/github.com/BohemianCoding/svgo-compressor",
     "compatibleVersion": 3.8,
     "commands": [
         {
