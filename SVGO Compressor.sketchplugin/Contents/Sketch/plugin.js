@@ -29279,7 +29279,7 @@ var SketchPlugin = exports.SketchPlugin = {
   description: "A Plugin that compresses SVG assets using SVGO, right when you export them. This Plugin *requires* Sketch 3.8.",
   author: "Ale Muñoz",
   authorEmail: "ale@sketchapp.com",
-  version: "1.3",
+  version: "1.3.1",
   identifier: "com.sketchapp.plugins.svgo-compressor",
   homepage: "https:/github.com/BohemianCoding/svgo-compressor",
   compatibleVersion: 3.8,
@@ -29354,7 +29354,7 @@ var SketchPlugin = exports.SketchPlugin = {
             "comment": "This is the settings file for the SVGO Compressor Plugin. For more info, please check <https://github.com/BohemianCoding/svgo-compressor>",
             "pretty": true,
             "indent": 2,
-            "plugins": [{ "name": "cleanupAttrs" }, { "name": "cleanupEnableBackground" }, { "name": "cleanupIDs" }, { "name": "cleanupListOfValues" }, { "name": "cleanupNumericValues" }, { "name": "collapseGroups" }, { "name": "convertStyleToAttrs" }, { "name": "convertTransforms" }, { "name": "mergePaths" }, { "name": "minifyStyles" }, { "name": "removeComments" }, { "name": "removeDesc", "params": { "removeAny": true } }, { "name": "removeDoctype" }, { "name": "removeEditorsNSData" }, { "name": "removeEmptyAttrs" }, { "name": "removeEmptyContainers" }, { "name": "removeEmptyText" }, { "name": "removeMetadata" }, { "name": "removeNonInheritableGroupAttrs" }, { "name": "removeTitle" }, { "name": "removeUnknownsAndDefaults" }, { "name": "removeUnusedNS" }, { "name": "removeUselessDefs" }, { "name": "removeUselessStrokeAndFill" }, { "name": "removeXMLProcInst" }, { "name": "sortAttrs" }]
+            "plugins": [{ "name": "cleanupAttrs" }, { "name": "cleanupEnableBackground" }, { "name": "cleanupIDs" }, { "name": "cleanupListOfValues" }, { "name": "cleanupNumericValues" }, { "name": "collapseGroups" }, { "name": "convertStyleToAttrs" }, { "name": "convertTransform" }, { "name": "mergePaths" }, { "name": "minifyStyles" }, { "name": "removeComments" }, { "name": "removeDesc", "params": { "removeAny": true } }, { "name": "removeDoctype" }, { "name": "removeEditorsNSData" }, { "name": "removeEmptyAttrs" }, { "name": "removeEmptyContainers" }, { "name": "removeEmptyText" }, { "name": "removeMetadata" }, { "name": "removeNonInheritableGroupAttrs" }, { "name": "removeTitle" }, { "name": "removeUnknownsAndDefaults" }, { "name": "removeUnusedNS" }, { "name": "removeUselessDefs" }, { "name": "removeUselessStrokeAndFill" }, { "name": "removeXMLProcInst" }, { "name": "sortAttrs" }]
           };
           NSString.stringWithString(JSON.stringify(svgoJSON, null, '  ')).writeToFile_atomically_encoding_error(svgoJSONFilePath, true, NSUTF8StringEncoding, nil);
         }
@@ -29446,7 +29446,7 @@ __globals.___svgo_run_handler_ = function (context, params) {
     "description": "A Plugin that compresses SVG assets using SVGO, right when you export them. This Plugin *requires* Sketch 3.8.",
     "author": "Ale Muñoz",
     "authorEmail": "ale@sketchapp.com",
-    "version": "1.3",
+    "version": "1.3.1",
     "identifier": "com.sketchapp.plugins.svgo-compressor",
     "homepage": "https:/github.com/BohemianCoding/svgo-compressor",
     "compatibleVersion": 3.8,
