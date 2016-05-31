@@ -27,3 +27,7 @@ We would like to thank:
 
 - The [SVGO project](https://github.com/svg/svgo), for creating the golden standard for SVG compression.
 - [Andrey Shakhmin](https://github.com/turbobabr), for his inspiration during the [Hamburg Hackathon](http://designtoolshackday.com), where he showed us how to use node modules inside Sketch.
+
+## Support & feedback
+
+We’ve done our best to make the Plugin useful & usable, but we know there’s always room for improvement. If you have any question or want to share your feedback, we’d love to hear it. Either file an issue, or get in touch with us at <developers@sketchapp.com>
