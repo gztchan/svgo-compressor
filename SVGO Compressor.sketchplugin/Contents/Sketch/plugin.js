@@ -29279,7 +29279,7 @@ var SketchPlugin = exports.SketchPlugin = {
   description: "A Plugin that compresses SVG assets using SVGO, right when you export them. This Plugin *requires* Sketch 3.8.",
   author: "Ale Muñoz",
   authorEmail: "ale@sketchapp.com",
-  version: "1.3.2",
+  version: "1.3.3",
   identifier: "com.sketchapp.plugins.svgo-compressor",
   homepage: "https:/github.com/BohemianCoding/svgo-compressor",
   compatibleVersion: 3.8,
@@ -29289,7 +29289,8 @@ var SketchPlugin = exports.SketchPlugin = {
       handlers: {
         run: "___svgo_run_handler_",
         actions: {
-          "ExportSlices": "___svgo_run_handler_" // TODO: Fix this ugly hack
+          "ExportSlices": "___svgo_run_handler_", // TODO: Fix this ugly hack
+          "Export": "___svgo_run_handler_" // TODO: Fix this ugly hack
         }
       },
       run: function run(context) {
@@ -29447,7 +29448,7 @@ __globals.___svgo_run_handler_ = function (context, params) {
     "description": "A Plugin that compresses SVG assets using SVGO, right when you export them. This Plugin *requires* Sketch 3.8.",
     "author": "Ale Muñoz",
     "authorEmail": "ale@sketchapp.com",
-    "version": "1.3.2",
+    "version": "1.3.3",
     "identifier": "com.sketchapp.plugins.svgo-compressor",
     "homepage": "https:/github.com/BohemianCoding/svgo-compressor",
     "compatibleVersion": 3.8,
@@ -29460,7 +29461,8 @@ __globals.___svgo_run_handler_ = function (context, params) {
             "handlers": {
                 "run": "___svgo_run_handler_",
                 "actions": {
-                    "ExportSlices": "___svgo_run_handler_"
+                    "ExportSlices": "___svgo_run_handler_",
+                    "Export": "___svgo_run_handler_"
                 }
             }
         }
