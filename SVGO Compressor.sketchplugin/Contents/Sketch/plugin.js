@@ -29279,7 +29279,7 @@ var SketchPlugin = exports.SketchPlugin = {
   description: "A Plugin that compresses SVG assets using SVGO, right when you export them. This Plugin *requires* Sketch 3.8.",
   author: "Ale Muñoz",
   authorEmail: "ale@sketchapp.com",
-  version: "1.3.1",
+  version: "1.3.2",
   identifier: "com.sketchapp.plugins.svgo-compressor",
   homepage: "https:/github.com/BohemianCoding/svgo-compressor",
   compatibleVersion: 3.8,
@@ -29384,7 +29384,9 @@ var SketchPlugin = exports.SketchPlugin = {
             log('Enabled plugin: ' + item.name);
             plugin.active = true;
             if (item.params != null) {
-              plugin.params = item.params;
+              for (var attrname in item.params) {
+                plugin.params[attrname] = item.params[attrname];
+              }
             }
             parsedSVGOPlugins.push([plugin]);
           }
@@ -29445,7 +29447,7 @@ __globals.___svgo_run_handler_ = function (context, params) {
     "description": "A Plugin that compresses SVG assets using SVGO, right when you export them. This Plugin *requires* Sketch 3.8.",
     "author": "Ale Muñoz",
     "authorEmail": "ale@sketchapp.com",
-    "version": "1.3.1",
+    "version": "1.3.2",
     "identifier": "com.sketchapp.plugins.svgo-compressor",
     "homepage": "https:/github.com/BohemianCoding/svgo-compressor",
     "compatibleVersion": 3.8,
