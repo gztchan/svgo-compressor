@@ -1,6 +1,7 @@
 var __globals = this;(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 'use strict'
 
+exports.byteLength = byteLength
 exports.toByteArray = toByteArray
 exports.fromByteArray = fromByteArray
 
@@ -8,23 +9,17 @@ var lookup = []
 var revLookup = []
 var Arr = typeof Uint8Array !== 'undefined' ? Uint8Array : Array
 
-function init () {
-  var code = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-  for (var i = 0, len = code.length; i < len; ++i) {
-    lookup[i] = code[i]
-    revLookup[code.charCodeAt(i)] = i
-  }
-
-  revLookup['-'.charCodeAt(0)] = 62
-  revLookup['_'.charCodeAt(0)] = 63
+var code = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+for (var i = 0, len = code.length; i < len; ++i) {
+  lookup[i] = code[i]
+  revLookup[code.charCodeAt(i)] = i
 }
 
-init()
+revLookup['-'.charCodeAt(0)] = 62
+revLookup['_'.charCodeAt(0)] = 63
 
-function toByteArray (b64) {
-  var i, j, l, tmp, placeHolders, arr
+function placeHoldersCount (b64) {
   var len = b64.length
-
   if (len % 4 > 0) {
     throw new Error('Invalid string. Length must be a multiple of 4')
   }
@@ -34,9 +29,19 @@ function toByteArray (b64) {
   // represent one byte
   // if there is only one, then the three characters before it represent 2 bytes
   // this is just a cheap hack to not do indexOf twice
-  placeHolders = b64[len - 2] === '=' ? 2 : b64[len - 1] === '=' ? 1 : 0
+  return b64[len - 2] === '=' ? 2 : b64[len - 1] === '=' ? 1 : 0
+}
 
+function byteLength (b64) {
   // base64 is 4/3 + up to two characters of the original data
+  return b64.length * 3 / 4 - placeHoldersCount(b64)
+}
+
+function toByteArray (b64) {
+  var i, j, l, tmp, placeHolders, arr
+  var len = b64.length
+  placeHolders = placeHoldersCount(b64)
+
   arr = new Arr(len * 3 / 4 - placeHolders)
 
   // if there are placeholders, only get up to the last complete 4 chars
@@ -226,7 +231,6 @@ exports.allocUnsafeSlow = function allocUnsafeSlow(size) {
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 },{"buffer":5}],5:[function(require,module,exports){
-(function (global){
 /*!
  * The buffer module from node.js, for the browser.
  *
@@ -239,80 +243,57 @@ exports.allocUnsafeSlow = function allocUnsafeSlow(size) {
 
 var base64 = require('base64-js')
 var ieee754 = require('ieee754')
-var isArray = require('isarray')
 
 exports.Buffer = Buffer
 exports.SlowBuffer = SlowBuffer
 exports.INSPECT_MAX_BYTES = 50
 
+var K_MAX_LENGTH = 0x7fffffff
+exports.kMaxLength = K_MAX_LENGTH
+
 /**
  * If `Buffer.TYPED_ARRAY_SUPPORT`:
  *   === true    Use Uint8Array implementation (fastest)
- *   === false   Use Object implementation (most compatible, even IE6)
+ *   === false   Print warning and recommend using `buffer` v4.x which has an Object
+ *               implementation (most compatible, even IE6)
  *
  * Browsers that support typed arrays are IE 10+, Firefox 4+, Chrome 7+, Safari 5.1+,
  * Opera 11.6+, iOS 4.2+.
  *
- * Due to various browser bugs, sometimes the Object implementation will be used even
- * when the browser supports typed arrays.
- *
- * Note:
- *
- *   - Firefox 4-29 lacks support for adding new properties to `Uint8Array` instances,
- *     See: https://bugzilla.mozilla.org/show_bug.cgi?id=695438.
- *
- *   - Chrome 9-10 is missing the `TypedArray.prototype.subarray` function.
- *
- *   - IE10 has a broken `TypedArray.prototype.subarray` function which returns arrays of
- *     incorrect length in some situations.
-
- * We detect these buggy browsers and set `Buffer.TYPED_ARRAY_SUPPORT` to `false` so they
- * get the Object implementation, which is slower but behaves correctly.
+ * We report that the browser does not support typed arrays if the are not subclassable
+ * using __proto__. Firefox 4-29 lacks support for adding new properties to `Uint8Array`
+ * (See: https://bugzilla.mozilla.org/show_bug.cgi?id=695438). IE 10 lacks support
+ * for __proto__ and has a buggy typed array implementation.
  */
-Buffer.TYPED_ARRAY_SUPPORT = global.TYPED_ARRAY_SUPPORT !== undefined
-  ? global.TYPED_ARRAY_SUPPORT
-  : typedArraySupport()
+Buffer.TYPED_ARRAY_SUPPORT = typedArraySupport()
 
-/*
- * Export kMaxLength after typed array support is determined.
- */
-exports.kMaxLength = kMaxLength()
+if (!Buffer.TYPED_ARRAY_SUPPORT && typeof console !== 'undefined' &&
+    typeof console.error === 'function') {
+  console.error(
+    'This browser lacks typed array (Uint8Array) support which is required by ' +
+    '`buffer` v5.x. Use `buffer` v4.x if you require old browser support.'
+  )
+}
 
 function typedArraySupport () {
+  // Can typed array instances can be augmented?
   try {
     var arr = new Uint8Array(1)
-    arr.foo = function () { return 42 }
-    return arr.foo() === 42 && // typed array instances can be augmented
-        typeof arr.subarray === 'function' && // chrome 9-10 lack `subarray`
-        arr.subarray(1, 1).byteLength === 0 // ie10 has broken `subarray`
+    arr.__proto__ = {__proto__: Uint8Array.prototype, foo: function () { return 42 }}
+    return arr.foo() === 42
   } catch (e) {
     return false
   }
 }
 
-function kMaxLength () {
-  return Buffer.TYPED_ARRAY_SUPPORT
-    ? 0x7fffffff
-    : 0x3fffffff
-}
-
-function createBuffer (that, length) {
-  if (kMaxLength() < length) {
+function createBuffer (length) {
+  if (length > K_MAX_LENGTH) {
     throw new RangeError('Invalid typed array length')
   }
-  if (Buffer.TYPED_ARRAY_SUPPORT) {
-    // Return an augmented `Uint8Array` instance, for best performance
-    that = new Uint8Array(length)
-    that.__proto__ = Buffer.prototype
-  } else {
-    // Fallback: Return an object instance of the Buffer class
-    if (that === null) {
-      that = new Buffer(length)
-    }
-    that.length = length
-  }
-
-  return that
+  // Return an augmented `Uint8Array` instance
+  var buf = new Uint8Array(length)
+  buf.__proto__ = Buffer.prototype
+  return buf
 }
 
 /**
@@ -326,10 +307,6 @@ function createBuffer (that, length) {
  */
 
 function Buffer (arg, encodingOrOffset, length) {
-  if (!Buffer.TYPED_ARRAY_SUPPORT && !(this instanceof Buffer)) {
-    return new Buffer(arg, encodingOrOffset, length)
-  }
-
   // Common case.
   if (typeof arg === 'number') {
     if (typeof encodingOrOffset === 'string') {
@@ -337,33 +314,38 @@ function Buffer (arg, encodingOrOffset, length) {
         'If encoding is specified then the first argument must be a string'
       )
     }
-    return allocUnsafe(this, arg)
+    return allocUnsafe(arg)
   }
-  return from(this, arg, encodingOrOffset, length)
+  return from(arg, encodingOrOffset, length)
+}
+
+// Fix subarray() in ES2016. See: https://github.com/feross/buffer/pull/97
+if (typeof Symbol !== 'undefined' && Symbol.species &&
+    Buffer[Symbol.species] === Buffer) {
+  Object.defineProperty(Buffer, Symbol.species, {
+    value: null,
+    configurable: true,
+    enumerable: false,
+    writable: false
+  })
 }
 
 Buffer.poolSize = 8192 // not used by this implementation
 
-// TODO: Legacy, not needed anymore. Remove in next major version.
-Buffer._augment = function (arr) {
-  arr.__proto__ = Buffer.prototype
-  return arr
-}
-
-function from (that, value, encodingOrOffset, length) {
+function from (value, encodingOrOffset, length) {
   if (typeof value === 'number') {
     throw new TypeError('"value" argument must not be a number')
   }
 
-  if (typeof ArrayBuffer !== 'undefined' && value instanceof ArrayBuffer) {
-    return fromArrayBuffer(that, value, encodingOrOffset, length)
+  if (value instanceof ArrayBuffer) {
+    return fromArrayBuffer(value, encodingOrOffset, length)
   }
 
   if (typeof value === 'string') {
-    return fromString(that, value, encodingOrOffset)
+    return fromString(value, encodingOrOffset)
   }
 
-  return fromObject(that, value)
+  return fromObject(value)
 }
 
 /**
@@ -375,42 +357,36 @@ function from (that, value, encodingOrOffset, length) {
  * Buffer.from(arrayBuffer[, byteOffset[, length]])
  **/
 Buffer.from = function (value, encodingOrOffset, length) {
-  return from(null, value, encodingOrOffset, length)
+  return from(value, encodingOrOffset, length)
 }
 
-if (Buffer.TYPED_ARRAY_SUPPORT) {
-  Buffer.prototype.__proto__ = Uint8Array.prototype
-  Buffer.__proto__ = Uint8Array
-  if (typeof Symbol !== 'undefined' && Symbol.species &&
-      Buffer[Symbol.species] === Buffer) {
-    // Fix subarray() in ES2016. See: https://github.com/feross/buffer/pull/97
-    Object.defineProperty(Buffer, Symbol.species, {
-      value: null,
-      configurable: true
-    })
-  }
-}
+// Note: Change prototype *after* Buffer.from is defined to workaround Chrome bug:
+// https://github.com/feross/buffer/pull/148
+Buffer.prototype.__proto__ = Uint8Array.prototype
+Buffer.__proto__ = Uint8Array
 
 function assertSize (size) {
   if (typeof size !== 'number') {
     throw new TypeError('"size" argument must be a number')
+  } else if (size < 0) {
+    throw new RangeError('"size" argument must not be negative')
   }
 }
 
-function alloc (that, size, fill, encoding) {
+function alloc (size, fill, encoding) {
   assertSize(size)
   if (size <= 0) {
-    return createBuffer(that, size)
+    return createBuffer(size)
   }
   if (fill !== undefined) {
     // Only pay attention to encoding if it's a string. This
     // prevents accidentally sending in a number that would
     // be interpretted as a start offset.
     return typeof encoding === 'string'
-      ? createBuffer(that, size).fill(fill, encoding)
-      : createBuffer(that, size).fill(fill)
+      ? createBuffer(size).fill(fill, encoding)
+      : createBuffer(size).fill(fill)
   }
-  return createBuffer(that, size)
+  return createBuffer(size)
 }
 
 /**
@@ -418,34 +394,28 @@ function alloc (that, size, fill, encoding) {
  * alloc(size[, fill[, encoding]])
  **/
 Buffer.alloc = function (size, fill, encoding) {
-  return alloc(null, size, fill, encoding)
+  return alloc(size, fill, encoding)
 }
 
-function allocUnsafe (that, size) {
+function allocUnsafe (size) {
   assertSize(size)
-  that = createBuffer(that, size < 0 ? 0 : checked(size) | 0)
-  if (!Buffer.TYPED_ARRAY_SUPPORT) {
-    for (var i = 0; i < size; i++) {
-      that[i] = 0
-    }
-  }
-  return that
+  return createBuffer(size < 0 ? 0 : checked(size) | 0)
 }
 
 /**
  * Equivalent to Buffer(num), by default creates a non-zero-filled Buffer instance.
  * */
 Buffer.allocUnsafe = function (size) {
-  return allocUnsafe(null, size)
+  return allocUnsafe(size)
 }
 /**
  * Equivalent to SlowBuffer(num), by default creates a non-zero-filled Buffer instance.
  */
 Buffer.allocUnsafeSlow = function (size) {
-  return allocUnsafe(null, size)
+  return allocUnsafe(size)
 }
 
-function fromString (that, string, encoding) {
+function fromString (string, encoding) {
   if (typeof encoding !== 'string' || encoding === '') {
     encoding = 'utf8'
   }
@@ -455,24 +425,30 @@ function fromString (that, string, encoding) {
   }
 
   var length = byteLength(string, encoding) | 0
-  that = createBuffer(that, length)
+  var buf = createBuffer(length)
 
-  that.write(string, encoding)
-  return that
-}
+  var actual = buf.write(string, encoding)
 
-function fromArrayLike (that, array) {
-  var length = checked(array.length) | 0
-  that = createBuffer(that, length)
-  for (var i = 0; i < length; i += 1) {
-    that[i] = array[i] & 255
+  if (actual !== length) {
+    // Writing a hex string, for example, that contains invalid characters will
+    // cause everything after the first invalid character to be ignored. (e.g.
+    // 'abxxcd' will be treated as 'ab')
+    buf = buf.slice(0, actual)
   }
-  return that
+
+  return buf
 }
 
-function fromArrayBuffer (that, array, byteOffset, length) {
-  array.byteLength // this throws if `array` is not a valid ArrayBuffer
+function fromArrayLike (array) {
+  var length = array.length < 0 ? 0 : checked(array.length) | 0
+  var buf = createBuffer(length)
+  for (var i = 0; i < length; i += 1) {
+    buf[i] = array[i] & 255
+  }
+  return buf
+}
 
+function fromArrayBuffer (array, byteOffset, length) {
   if (byteOffset < 0 || array.byteLength < byteOffset) {
     throw new RangeError('\'offset\' is out of bounds')
   }
@@ -481,47 +457,43 @@ function fromArrayBuffer (that, array, byteOffset, length) {
     throw new RangeError('\'length\' is out of bounds')
   }
 
-  if (length === undefined) {
-    array = new Uint8Array(array, byteOffset)
+  var buf
+  if (byteOffset === undefined && length === undefined) {
+    buf = new Uint8Array(array)
+  } else if (length === undefined) {
+    buf = new Uint8Array(array, byteOffset)
   } else {
-    array = new Uint8Array(array, byteOffset, length)
+    buf = new Uint8Array(array, byteOffset, length)
   }
 
-  if (Buffer.TYPED_ARRAY_SUPPORT) {
-    // Return an augmented `Uint8Array` instance, for best performance
-    that = array
-    that.__proto__ = Buffer.prototype
-  } else {
-    // Fallback: Return an object instance of the Buffer class
-    that = fromArrayLike(that, array)
-  }
-  return that
+  // Return an augmented `Uint8Array` instance
+  buf.__proto__ = Buffer.prototype
+  return buf
 }
 
-function fromObject (that, obj) {
+function fromObject (obj) {
   if (Buffer.isBuffer(obj)) {
     var len = checked(obj.length) | 0
-    that = createBuffer(that, len)
+    var buf = createBuffer(len)
 
-    if (that.length === 0) {
-      return that
+    if (buf.length === 0) {
+      return buf
     }
 
-    obj.copy(that, 0, 0, len)
-    return that
+    obj.copy(buf, 0, 0, len)
+    return buf
   }
 
   if (obj) {
-    if ((typeof ArrayBuffer !== 'undefined' &&
-        obj.buffer instanceof ArrayBuffer) || 'length' in obj) {
+    if (ArrayBuffer.isView(obj) || 'length' in obj) {
       if (typeof obj.length !== 'number' || isnan(obj.length)) {
-        return createBuffer(that, 0)
+        return createBuffer(0)
       }
-      return fromArrayLike(that, obj)
+      return fromArrayLike(obj)
     }
 
-    if (obj.type === 'Buffer' && isArray(obj.data)) {
-      return fromArrayLike(that, obj.data)
+    if (obj.type === 'Buffer' && Array.isArray(obj.data)) {
+      return fromArrayLike(obj.data)
     }
   }
 
@@ -529,11 +501,11 @@ function fromObject (that, obj) {
 }
 
 function checked (length) {
-  // Note: cannot use `length < kMaxLength` here because that fails when
+  // Note: cannot use `length < K_MAX_LENGTH` here because that fails when
   // length is NaN (which is otherwise coerced to zero.)
-  if (length >= kMaxLength()) {
+  if (length >= K_MAX_LENGTH) {
     throw new RangeError('Attempt to allocate Buffer larger than maximum ' +
-                         'size: 0x' + kMaxLength().toString(16) + ' bytes')
+                         'size: 0x' + K_MAX_LENGTH.toString(16) + ' bytes')
   }
   return length | 0
 }
@@ -546,7 +518,7 @@ function SlowBuffer (length) {
 }
 
 Buffer.isBuffer = function isBuffer (b) {
-  return !!(b != null && b._isBuffer)
+  return b != null && b._isBuffer === true
 }
 
 Buffer.compare = function compare (a, b) {
@@ -578,9 +550,9 @@ Buffer.isEncoding = function isEncoding (encoding) {
     case 'utf8':
     case 'utf-8':
     case 'ascii':
+    case 'latin1':
     case 'binary':
     case 'base64':
-    case 'raw':
     case 'ucs2':
     case 'ucs-2':
     case 'utf16le':
@@ -592,7 +564,7 @@ Buffer.isEncoding = function isEncoding (encoding) {
 }
 
 Buffer.concat = function concat (list, length) {
-  if (!isArray(list)) {
+  if (!Array.isArray(list)) {
     throw new TypeError('"list" argument must be an Array of Buffers')
   }
 
@@ -603,14 +575,14 @@ Buffer.concat = function concat (list, length) {
   var i
   if (length === undefined) {
     length = 0
-    for (i = 0; i < list.length; i++) {
+    for (i = 0; i < list.length; ++i) {
       length += list[i].length
     }
   }
 
   var buffer = Buffer.allocUnsafe(length)
   var pos = 0
-  for (i = 0; i < list.length; i++) {
+  for (i = 0; i < list.length; ++i) {
     var buf = list[i]
     if (!Buffer.isBuffer(buf)) {
       throw new TypeError('"list" argument must be an Array of Buffers')
@@ -625,8 +597,7 @@ function byteLength (string, encoding) {
   if (Buffer.isBuffer(string)) {
     return string.length
   }
-  if (typeof ArrayBuffer !== 'undefined' && typeof ArrayBuffer.isView === 'function' &&
-      (ArrayBuffer.isView(string) || string instanceof ArrayBuffer)) {
+  if (ArrayBuffer.isView(string) || string instanceof ArrayBuffer) {
     return string.byteLength
   }
   if (typeof string !== 'string') {
@@ -641,10 +612,8 @@ function byteLength (string, encoding) {
   for (;;) {
     switch (encoding) {
       case 'ascii':
+      case 'latin1':
       case 'binary':
-      // Deprecated
-      case 'raw':
-      case 'raws':
         return len
       case 'utf8':
       case 'utf-8':
@@ -717,8 +686,9 @@ function slowToString (encoding, start, end) {
       case 'ascii':
         return asciiSlice(this, start, end)
 
+      case 'latin1':
       case 'binary':
-        return binarySlice(this, start, end)
+        return latin1Slice(this, start, end)
 
       case 'base64':
         return base64Slice(this, start, end)
@@ -737,8 +707,12 @@ function slowToString (encoding, start, end) {
   }
 }
 
-// The property is used by `Buffer.isBuffer` and `is-buffer` (in Safari 5-7) to detect
-// Buffer instances.
+// This property is used by `Buffer.isBuffer` (and the `is-buffer` npm package)
+// to detect a Buffer instance. It's not possible to use `instanceof Buffer`
+// reliably in a browserify context because there could be multiple different
+// copies of the 'buffer' package in use. This method works even for Buffer
+// instances that were created from another copy of the `buffer` package.
+// See: https://github.com/feross/buffer/issues/154
 Buffer.prototype._isBuffer = true
 
 function swap (b, n, m) {
@@ -770,8 +744,22 @@ Buffer.prototype.swap32 = function swap32 () {
   return this
 }
 
+Buffer.prototype.swap64 = function swap64 () {
+  var len = this.length
+  if (len % 8 !== 0) {
+    throw new RangeError('Buffer size must be a multiple of 64-bits')
+  }
+  for (var i = 0; i < len; i += 8) {
+    swap(this, i, i + 7)
+    swap(this, i + 1, i + 6)
+    swap(this, i + 2, i + 5)
+    swap(this, i + 3, i + 4)
+  }
+  return this
+}
+
 Buffer.prototype.toString = function toString () {
-  var length = this.length | 0
+  var length = this.length
   if (length === 0) return ''
   if (arguments.length === 0) return utf8Slice(this, 0, length)
   return slowToString.apply(this, arguments)
@@ -852,7 +840,72 @@ Buffer.prototype.compare = function compare (target, start, end, thisStart, this
   return 0
 }
 
-function arrayIndexOf (arr, val, byteOffset, encoding) {
+// Finds either the first index of `val` in `buffer` at offset >= `byteOffset`,
+// OR the last index of `val` in `buffer` at offset <= `byteOffset`.
+//
+// Arguments:
+// - buffer - a Buffer to search
+// - val - a string, Buffer, or number
+// - byteOffset - an index into `buffer`; will be clamped to an int32
+// - encoding - an optional encoding, relevant is val is a string
+// - dir - true for indexOf, false for lastIndexOf
+function bidirectionalIndexOf (buffer, val, byteOffset, encoding, dir) {
+  // Empty buffer means no match
+  if (buffer.length === 0) return -1
+
+  // Normalize byteOffset
+  if (typeof byteOffset === 'string') {
+    encoding = byteOffset
+    byteOffset = 0
+  } else if (byteOffset > 0x7fffffff) {
+    byteOffset = 0x7fffffff
+  } else if (byteOffset < -0x80000000) {
+    byteOffset = -0x80000000
+  }
+  byteOffset = +byteOffset  // Coerce to Number.
+  if (isNaN(byteOffset)) {
+    // byteOffset: it it's undefined, null, NaN, "foo", etc, search whole buffer
+    byteOffset = dir ? 0 : (buffer.length - 1)
+  }
+
+  // Normalize byteOffset: negative offsets start from the end of the buffer
+  if (byteOffset < 0) byteOffset = buffer.length + byteOffset
+  if (byteOffset >= buffer.length) {
+    if (dir) return -1
+    else byteOffset = buffer.length - 1
+  } else if (byteOffset < 0) {
+    if (dir) byteOffset = 0
+    else return -1
+  }
+
+  // Normalize val
+  if (typeof val === 'string') {
+    val = Buffer.from(val, encoding)
+  }
+
+  // Finally, search either indexOf (if dir is true) or lastIndexOf
+  if (Buffer.isBuffer(val)) {
+    // Special case: looking for empty string/buffer always fails
+    if (val.length === 0) {
+      return -1
+    }
+    return arrayIndexOf(buffer, val, byteOffset, encoding, dir)
+  } else if (typeof val === 'number') {
+    val = val & 0xFF // Search for a byte value [0-255]
+    if (typeof Uint8Array.prototype.indexOf === 'function') {
+      if (dir) {
+        return Uint8Array.prototype.indexOf.call(buffer, val, byteOffset)
+      } else {
+        return Uint8Array.prototype.lastIndexOf.call(buffer, val, byteOffset)
+      }
+    }
+    return arrayIndexOf(buffer, [ val ], byteOffset, encoding, dir)
+  }
+
+  throw new TypeError('val must be string, number or Buffer')
+}
+
+function arrayIndexOf (arr, val, byteOffset, encoding, dir) {
   var indexSize = 1
   var arrLength = arr.length
   var valLength = val.length
@@ -879,59 +932,45 @@ function arrayIndexOf (arr, val, byteOffset, encoding) {
     }
   }
 
-  var foundIndex = -1
-  for (var i = 0; byteOffset + i < arrLength; i++) {
-    if (read(arr, byteOffset + i) === read(val, foundIndex === -1 ? 0 : i - foundIndex)) {
-      if (foundIndex === -1) foundIndex = i
-      if (i - foundIndex + 1 === valLength) return (byteOffset + foundIndex) * indexSize
-    } else {
-      if (foundIndex !== -1) i -= i - foundIndex
-      foundIndex = -1
+  var i
+  if (dir) {
+    var foundIndex = -1
+    for (i = byteOffset; i < arrLength; i++) {
+      if (read(arr, i) === read(val, foundIndex === -1 ? 0 : i - foundIndex)) {
+        if (foundIndex === -1) foundIndex = i
+        if (i - foundIndex + 1 === valLength) return foundIndex * indexSize
+      } else {
+        if (foundIndex !== -1) i -= i - foundIndex
+        foundIndex = -1
+      }
+    }
+  } else {
+    if (byteOffset + valLength > arrLength) byteOffset = arrLength - valLength
+    for (i = byteOffset; i >= 0; i--) {
+      var found = true
+      for (var j = 0; j < valLength; j++) {
+        if (read(arr, i + j) !== read(val, j)) {
+          found = false
+          break
+        }
+      }
+      if (found) return i
     }
   }
+
   return -1
-}
-
-Buffer.prototype.indexOf = function indexOf (val, byteOffset, encoding) {
-  if (typeof byteOffset === 'string') {
-    encoding = byteOffset
-    byteOffset = 0
-  } else if (byteOffset > 0x7fffffff) {
-    byteOffset = 0x7fffffff
-  } else if (byteOffset < -0x80000000) {
-    byteOffset = -0x80000000
-  }
-  byteOffset >>= 0
-
-  if (this.length === 0) return -1
-  if (byteOffset >= this.length) return -1
-
-  // Negative offsets start from the end of the buffer
-  if (byteOffset < 0) byteOffset = Math.max(this.length + byteOffset, 0)
-
-  if (typeof val === 'string') {
-    val = Buffer.from(val, encoding)
-  }
-
-  if (Buffer.isBuffer(val)) {
-    // special case: looking for empty string/buffer always fails
-    if (val.length === 0) {
-      return -1
-    }
-    return arrayIndexOf(this, val, byteOffset, encoding)
-  }
-  if (typeof val === 'number') {
-    if (Buffer.TYPED_ARRAY_SUPPORT && Uint8Array.prototype.indexOf === 'function') {
-      return Uint8Array.prototype.indexOf.call(this, val, byteOffset)
-    }
-    return arrayIndexOf(this, [ val ], byteOffset, encoding)
-  }
-
-  throw new TypeError('val must be string, number or Buffer')
 }
 
 Buffer.prototype.includes = function includes (val, byteOffset, encoding) {
   return this.indexOf(val, byteOffset, encoding) !== -1
+}
+
+Buffer.prototype.indexOf = function indexOf (val, byteOffset, encoding) {
+  return bidirectionalIndexOf(this, val, byteOffset, encoding, true)
+}
+
+Buffer.prototype.lastIndexOf = function lastIndexOf (val, byteOffset, encoding) {
+  return bidirectionalIndexOf(this, val, byteOffset, encoding, false)
 }
 
 function hexWrite (buf, string, offset, length) {
@@ -948,12 +987,12 @@ function hexWrite (buf, string, offset, length) {
 
   // must be an even number of digits
   var strLen = string.length
-  if (strLen % 2 !== 0) throw new Error('Invalid hex string')
+  if (strLen % 2 !== 0) throw new TypeError('Invalid hex string')
 
   if (length > strLen / 2) {
     length = strLen / 2
   }
-  for (var i = 0; i < length; i++) {
+  for (var i = 0; i < length; ++i) {
     var parsed = parseInt(string.substr(i * 2, 2), 16)
     if (isNaN(parsed)) return i
     buf[offset + i] = parsed
@@ -969,7 +1008,7 @@ function asciiWrite (buf, string, offset, length) {
   return blitBuffer(asciiToBytes(string), buf, offset, length)
 }
 
-function binaryWrite (buf, string, offset, length) {
+function latin1Write (buf, string, offset, length) {
   return asciiWrite(buf, string, offset, length)
 }
 
@@ -994,15 +1033,14 @@ Buffer.prototype.write = function write (string, offset, length, encoding) {
     offset = 0
   // Buffer#write(string, offset[, length][, encoding])
   } else if (isFinite(offset)) {
-    offset = offset | 0
+    offset = offset >>> 0
     if (isFinite(length)) {
-      length = length | 0
+      length = length >>> 0
       if (encoding === undefined) encoding = 'utf8'
     } else {
       encoding = length
       length = undefined
     }
-  // legacy write(string, encoding, offset, length) - remove in v0.13
   } else {
     throw new Error(
       'Buffer.write(string, encoding, offset[, length]) is no longer supported'
@@ -1031,8 +1069,9 @@ Buffer.prototype.write = function write (string, offset, length, encoding) {
       case 'ascii':
         return asciiWrite(this, string, offset, length)
 
+      case 'latin1':
       case 'binary':
-        return binaryWrite(this, string, offset, length)
+        return latin1Write(this, string, offset, length)
 
       case 'base64':
         // Warning: maxLength not taken into account in base64Write
@@ -1167,17 +1206,17 @@ function asciiSlice (buf, start, end) {
   var ret = ''
   end = Math.min(buf.length, end)
 
-  for (var i = start; i < end; i++) {
+  for (var i = start; i < end; ++i) {
     ret += String.fromCharCode(buf[i] & 0x7F)
   }
   return ret
 }
 
-function binarySlice (buf, start, end) {
+function latin1Slice (buf, start, end) {
   var ret = ''
   end = Math.min(buf.length, end)
 
-  for (var i = start; i < end; i++) {
+  for (var i = start; i < end; ++i) {
     ret += String.fromCharCode(buf[i])
   }
   return ret
@@ -1190,7 +1229,7 @@ function hexSlice (buf, start, end) {
   if (!end || end < 0 || end > len) end = len
 
   var out = ''
-  for (var i = start; i < end; i++) {
+  for (var i = start; i < end; ++i) {
     out += toHex(buf[i])
   }
   return out
@@ -1200,7 +1239,7 @@ function utf16leSlice (buf, start, end) {
   var bytes = buf.slice(start, end)
   var res = ''
   for (var i = 0; i < bytes.length; i += 2) {
-    res += String.fromCharCode(bytes[i] + bytes[i + 1] * 256)
+    res += String.fromCharCode(bytes[i] + (bytes[i + 1] * 256))
   }
   return res
 }
@@ -1226,18 +1265,9 @@ Buffer.prototype.slice = function slice (start, end) {
 
   if (end < start) end = start
 
-  var newBuf
-  if (Buffer.TYPED_ARRAY_SUPPORT) {
-    newBuf = this.subarray(start, end)
-    newBuf.__proto__ = Buffer.prototype
-  } else {
-    var sliceLen = end - start
-    newBuf = new Buffer(sliceLen, undefined)
-    for (var i = 0; i < sliceLen; i++) {
-      newBuf[i] = this[i + start]
-    }
-  }
-
+  var newBuf = this.subarray(start, end)
+  // Return an augmented `Uint8Array` instance
+  newBuf.__proto__ = Buffer.prototype
   return newBuf
 }
 
@@ -1250,8 +1280,8 @@ function checkOffset (offset, ext, length) {
 }
 
 Buffer.prototype.readUIntLE = function readUIntLE (offset, byteLength, noAssert) {
-  offset = offset | 0
-  byteLength = byteLength | 0
+  offset = offset >>> 0
+  byteLength = byteLength >>> 0
   if (!noAssert) checkOffset(offset, byteLength, this.length)
 
   var val = this[offset]
@@ -1265,8 +1295,8 @@ Buffer.prototype.readUIntLE = function readUIntLE (offset, byteLength, noAssert)
 }
 
 Buffer.prototype.readUIntBE = function readUIntBE (offset, byteLength, noAssert) {
-  offset = offset | 0
-  byteLength = byteLength | 0
+  offset = offset >>> 0
+  byteLength = byteLength >>> 0
   if (!noAssert) {
     checkOffset(offset, byteLength, this.length)
   }
@@ -1281,21 +1311,25 @@ Buffer.prototype.readUIntBE = function readUIntBE (offset, byteLength, noAssert)
 }
 
 Buffer.prototype.readUInt8 = function readUInt8 (offset, noAssert) {
+  offset = offset >>> 0
   if (!noAssert) checkOffset(offset, 1, this.length)
   return this[offset]
 }
 
 Buffer.prototype.readUInt16LE = function readUInt16LE (offset, noAssert) {
+  offset = offset >>> 0
   if (!noAssert) checkOffset(offset, 2, this.length)
   return this[offset] | (this[offset + 1] << 8)
 }
 
 Buffer.prototype.readUInt16BE = function readUInt16BE (offset, noAssert) {
+  offset = offset >>> 0
   if (!noAssert) checkOffset(offset, 2, this.length)
   return (this[offset] << 8) | this[offset + 1]
 }
 
 Buffer.prototype.readUInt32LE = function readUInt32LE (offset, noAssert) {
+  offset = offset >>> 0
   if (!noAssert) checkOffset(offset, 4, this.length)
 
   return ((this[offset]) |
@@ -1305,6 +1339,7 @@ Buffer.prototype.readUInt32LE = function readUInt32LE (offset, noAssert) {
 }
 
 Buffer.prototype.readUInt32BE = function readUInt32BE (offset, noAssert) {
+  offset = offset >>> 0
   if (!noAssert) checkOffset(offset, 4, this.length)
 
   return (this[offset] * 0x1000000) +
@@ -1314,8 +1349,8 @@ Buffer.prototype.readUInt32BE = function readUInt32BE (offset, noAssert) {
 }
 
 Buffer.prototype.readIntLE = function readIntLE (offset, byteLength, noAssert) {
-  offset = offset | 0
-  byteLength = byteLength | 0
+  offset = offset >>> 0
+  byteLength = byteLength >>> 0
   if (!noAssert) checkOffset(offset, byteLength, this.length)
 
   var val = this[offset]
@@ -1332,8 +1367,8 @@ Buffer.prototype.readIntLE = function readIntLE (offset, byteLength, noAssert) {
 }
 
 Buffer.prototype.readIntBE = function readIntBE (offset, byteLength, noAssert) {
-  offset = offset | 0
-  byteLength = byteLength | 0
+  offset = offset >>> 0
+  byteLength = byteLength >>> 0
   if (!noAssert) checkOffset(offset, byteLength, this.length)
 
   var i = byteLength
@@ -1350,24 +1385,28 @@ Buffer.prototype.readIntBE = function readIntBE (offset, byteLength, noAssert) {
 }
 
 Buffer.prototype.readInt8 = function readInt8 (offset, noAssert) {
+  offset = offset >>> 0
   if (!noAssert) checkOffset(offset, 1, this.length)
   if (!(this[offset] & 0x80)) return (this[offset])
   return ((0xff - this[offset] + 1) * -1)
 }
 
 Buffer.prototype.readInt16LE = function readInt16LE (offset, noAssert) {
+  offset = offset >>> 0
   if (!noAssert) checkOffset(offset, 2, this.length)
   var val = this[offset] | (this[offset + 1] << 8)
   return (val & 0x8000) ? val | 0xFFFF0000 : val
 }
 
 Buffer.prototype.readInt16BE = function readInt16BE (offset, noAssert) {
+  offset = offset >>> 0
   if (!noAssert) checkOffset(offset, 2, this.length)
   var val = this[offset + 1] | (this[offset] << 8)
   return (val & 0x8000) ? val | 0xFFFF0000 : val
 }
 
 Buffer.prototype.readInt32LE = function readInt32LE (offset, noAssert) {
+  offset = offset >>> 0
   if (!noAssert) checkOffset(offset, 4, this.length)
 
   return (this[offset]) |
@@ -1377,6 +1416,7 @@ Buffer.prototype.readInt32LE = function readInt32LE (offset, noAssert) {
 }
 
 Buffer.prototype.readInt32BE = function readInt32BE (offset, noAssert) {
+  offset = offset >>> 0
   if (!noAssert) checkOffset(offset, 4, this.length)
 
   return (this[offset] << 24) |
@@ -1386,21 +1426,25 @@ Buffer.prototype.readInt32BE = function readInt32BE (offset, noAssert) {
 }
 
 Buffer.prototype.readFloatLE = function readFloatLE (offset, noAssert) {
+  offset = offset >>> 0
   if (!noAssert) checkOffset(offset, 4, this.length)
   return ieee754.read(this, offset, true, 23, 4)
 }
 
 Buffer.prototype.readFloatBE = function readFloatBE (offset, noAssert) {
+  offset = offset >>> 0
   if (!noAssert) checkOffset(offset, 4, this.length)
   return ieee754.read(this, offset, false, 23, 4)
 }
 
 Buffer.prototype.readDoubleLE = function readDoubleLE (offset, noAssert) {
+  offset = offset >>> 0
   if (!noAssert) checkOffset(offset, 8, this.length)
   return ieee754.read(this, offset, true, 52, 8)
 }
 
 Buffer.prototype.readDoubleBE = function readDoubleBE (offset, noAssert) {
+  offset = offset >>> 0
   if (!noAssert) checkOffset(offset, 8, this.length)
   return ieee754.read(this, offset, false, 52, 8)
 }
@@ -1413,8 +1457,8 @@ function checkInt (buf, value, offset, ext, max, min) {
 
 Buffer.prototype.writeUIntLE = function writeUIntLE (value, offset, byteLength, noAssert) {
   value = +value
-  offset = offset | 0
-  byteLength = byteLength | 0
+  offset = offset >>> 0
+  byteLength = byteLength >>> 0
   if (!noAssert) {
     var maxBytes = Math.pow(2, 8 * byteLength) - 1
     checkInt(this, value, offset, byteLength, maxBytes, 0)
@@ -1432,8 +1476,8 @@ Buffer.prototype.writeUIntLE = function writeUIntLE (value, offset, byteLength, 
 
 Buffer.prototype.writeUIntBE = function writeUIntBE (value, offset, byteLength, noAssert) {
   value = +value
-  offset = offset | 0
-  byteLength = byteLength | 0
+  offset = offset >>> 0
+  byteLength = byteLength >>> 0
   if (!noAssert) {
     var maxBytes = Math.pow(2, 8 * byteLength) - 1
     checkInt(this, value, offset, byteLength, maxBytes, 0)
@@ -1451,89 +1495,57 @@ Buffer.prototype.writeUIntBE = function writeUIntBE (value, offset, byteLength, 
 
 Buffer.prototype.writeUInt8 = function writeUInt8 (value, offset, noAssert) {
   value = +value
-  offset = offset | 0
+  offset = offset >>> 0
   if (!noAssert) checkInt(this, value, offset, 1, 0xff, 0)
-  if (!Buffer.TYPED_ARRAY_SUPPORT) value = Math.floor(value)
   this[offset] = (value & 0xff)
   return offset + 1
 }
 
-function objectWriteUInt16 (buf, value, offset, littleEndian) {
-  if (value < 0) value = 0xffff + value + 1
-  for (var i = 0, j = Math.min(buf.length - offset, 2); i < j; i++) {
-    buf[offset + i] = (value & (0xff << (8 * (littleEndian ? i : 1 - i)))) >>>
-      (littleEndian ? i : 1 - i) * 8
-  }
-}
-
 Buffer.prototype.writeUInt16LE = function writeUInt16LE (value, offset, noAssert) {
   value = +value
-  offset = offset | 0
+  offset = offset >>> 0
   if (!noAssert) checkInt(this, value, offset, 2, 0xffff, 0)
-  if (Buffer.TYPED_ARRAY_SUPPORT) {
-    this[offset] = (value & 0xff)
-    this[offset + 1] = (value >>> 8)
-  } else {
-    objectWriteUInt16(this, value, offset, true)
-  }
+  this[offset] = (value & 0xff)
+  this[offset + 1] = (value >>> 8)
   return offset + 2
 }
 
 Buffer.prototype.writeUInt16BE = function writeUInt16BE (value, offset, noAssert) {
   value = +value
-  offset = offset | 0
+  offset = offset >>> 0
   if (!noAssert) checkInt(this, value, offset, 2, 0xffff, 0)
-  if (Buffer.TYPED_ARRAY_SUPPORT) {
-    this[offset] = (value >>> 8)
-    this[offset + 1] = (value & 0xff)
-  } else {
-    objectWriteUInt16(this, value, offset, false)
-  }
+  this[offset] = (value >>> 8)
+  this[offset + 1] = (value & 0xff)
   return offset + 2
-}
-
-function objectWriteUInt32 (buf, value, offset, littleEndian) {
-  if (value < 0) value = 0xffffffff + value + 1
-  for (var i = 0, j = Math.min(buf.length - offset, 4); i < j; i++) {
-    buf[offset + i] = (value >>> (littleEndian ? i : 3 - i) * 8) & 0xff
-  }
 }
 
 Buffer.prototype.writeUInt32LE = function writeUInt32LE (value, offset, noAssert) {
   value = +value
-  offset = offset | 0
+  offset = offset >>> 0
   if (!noAssert) checkInt(this, value, offset, 4, 0xffffffff, 0)
-  if (Buffer.TYPED_ARRAY_SUPPORT) {
-    this[offset + 3] = (value >>> 24)
-    this[offset + 2] = (value >>> 16)
-    this[offset + 1] = (value >>> 8)
-    this[offset] = (value & 0xff)
-  } else {
-    objectWriteUInt32(this, value, offset, true)
-  }
+  this[offset + 3] = (value >>> 24)
+  this[offset + 2] = (value >>> 16)
+  this[offset + 1] = (value >>> 8)
+  this[offset] = (value & 0xff)
   return offset + 4
 }
 
 Buffer.prototype.writeUInt32BE = function writeUInt32BE (value, offset, noAssert) {
   value = +value
-  offset = offset | 0
+  offset = offset >>> 0
   if (!noAssert) checkInt(this, value, offset, 4, 0xffffffff, 0)
-  if (Buffer.TYPED_ARRAY_SUPPORT) {
-    this[offset] = (value >>> 24)
-    this[offset + 1] = (value >>> 16)
-    this[offset + 2] = (value >>> 8)
-    this[offset + 3] = (value & 0xff)
-  } else {
-    objectWriteUInt32(this, value, offset, false)
-  }
+  this[offset] = (value >>> 24)
+  this[offset + 1] = (value >>> 16)
+  this[offset + 2] = (value >>> 8)
+  this[offset + 3] = (value & 0xff)
   return offset + 4
 }
 
 Buffer.prototype.writeIntLE = function writeIntLE (value, offset, byteLength, noAssert) {
   value = +value
-  offset = offset | 0
+  offset = offset >>> 0
   if (!noAssert) {
-    var limit = Math.pow(2, 8 * byteLength - 1)
+    var limit = Math.pow(2, (8 * byteLength) - 1)
 
     checkInt(this, value, offset, byteLength, limit - 1, -limit)
   }
@@ -1554,9 +1566,9 @@ Buffer.prototype.writeIntLE = function writeIntLE (value, offset, byteLength, no
 
 Buffer.prototype.writeIntBE = function writeIntBE (value, offset, byteLength, noAssert) {
   value = +value
-  offset = offset | 0
+  offset = offset >>> 0
   if (!noAssert) {
-    var limit = Math.pow(2, 8 * byteLength - 1)
+    var limit = Math.pow(2, (8 * byteLength) - 1)
 
     checkInt(this, value, offset, byteLength, limit - 1, -limit)
   }
@@ -1577,9 +1589,8 @@ Buffer.prototype.writeIntBE = function writeIntBE (value, offset, byteLength, no
 
 Buffer.prototype.writeInt8 = function writeInt8 (value, offset, noAssert) {
   value = +value
-  offset = offset | 0
+  offset = offset >>> 0
   if (!noAssert) checkInt(this, value, offset, 1, 0x7f, -0x80)
-  if (!Buffer.TYPED_ARRAY_SUPPORT) value = Math.floor(value)
   if (value < 0) value = 0xff + value + 1
   this[offset] = (value & 0xff)
   return offset + 1
@@ -1587,58 +1598,42 @@ Buffer.prototype.writeInt8 = function writeInt8 (value, offset, noAssert) {
 
 Buffer.prototype.writeInt16LE = function writeInt16LE (value, offset, noAssert) {
   value = +value
-  offset = offset | 0
+  offset = offset >>> 0
   if (!noAssert) checkInt(this, value, offset, 2, 0x7fff, -0x8000)
-  if (Buffer.TYPED_ARRAY_SUPPORT) {
-    this[offset] = (value & 0xff)
-    this[offset + 1] = (value >>> 8)
-  } else {
-    objectWriteUInt16(this, value, offset, true)
-  }
+  this[offset] = (value & 0xff)
+  this[offset + 1] = (value >>> 8)
   return offset + 2
 }
 
 Buffer.prototype.writeInt16BE = function writeInt16BE (value, offset, noAssert) {
   value = +value
-  offset = offset | 0
+  offset = offset >>> 0
   if (!noAssert) checkInt(this, value, offset, 2, 0x7fff, -0x8000)
-  if (Buffer.TYPED_ARRAY_SUPPORT) {
-    this[offset] = (value >>> 8)
-    this[offset + 1] = (value & 0xff)
-  } else {
-    objectWriteUInt16(this, value, offset, false)
-  }
+  this[offset] = (value >>> 8)
+  this[offset + 1] = (value & 0xff)
   return offset + 2
 }
 
 Buffer.prototype.writeInt32LE = function writeInt32LE (value, offset, noAssert) {
   value = +value
-  offset = offset | 0
+  offset = offset >>> 0
   if (!noAssert) checkInt(this, value, offset, 4, 0x7fffffff, -0x80000000)
-  if (Buffer.TYPED_ARRAY_SUPPORT) {
-    this[offset] = (value & 0xff)
-    this[offset + 1] = (value >>> 8)
-    this[offset + 2] = (value >>> 16)
-    this[offset + 3] = (value >>> 24)
-  } else {
-    objectWriteUInt32(this, value, offset, true)
-  }
+  this[offset] = (value & 0xff)
+  this[offset + 1] = (value >>> 8)
+  this[offset + 2] = (value >>> 16)
+  this[offset + 3] = (value >>> 24)
   return offset + 4
 }
 
 Buffer.prototype.writeInt32BE = function writeInt32BE (value, offset, noAssert) {
   value = +value
-  offset = offset | 0
+  offset = offset >>> 0
   if (!noAssert) checkInt(this, value, offset, 4, 0x7fffffff, -0x80000000)
   if (value < 0) value = 0xffffffff + value + 1
-  if (Buffer.TYPED_ARRAY_SUPPORT) {
-    this[offset] = (value >>> 24)
-    this[offset + 1] = (value >>> 16)
-    this[offset + 2] = (value >>> 8)
-    this[offset + 3] = (value & 0xff)
-  } else {
-    objectWriteUInt32(this, value, offset, false)
-  }
+  this[offset] = (value >>> 24)
+  this[offset + 1] = (value >>> 16)
+  this[offset + 2] = (value >>> 8)
+  this[offset + 3] = (value & 0xff)
   return offset + 4
 }
 
@@ -1648,6 +1643,8 @@ function checkIEEE754 (buf, value, offset, ext, max, min) {
 }
 
 function writeFloat (buf, value, offset, littleEndian, noAssert) {
+  value = +value
+  offset = offset >>> 0
   if (!noAssert) {
     checkIEEE754(buf, value, offset, 4, 3.4028234663852886e+38, -3.4028234663852886e+38)
   }
@@ -1664,6 +1661,8 @@ Buffer.prototype.writeFloatBE = function writeFloatBE (value, offset, noAssert) 
 }
 
 function writeDouble (buf, value, offset, littleEndian, noAssert) {
+  value = +value
+  offset = offset >>> 0
   if (!noAssert) {
     checkIEEE754(buf, value, offset, 8, 1.7976931348623157E+308, -1.7976931348623157E+308)
   }
@@ -1709,12 +1708,12 @@ Buffer.prototype.copy = function copy (target, targetStart, start, end) {
 
   if (this === target && start < targetStart && targetStart < end) {
     // descending copy from end
-    for (i = len - 1; i >= 0; i--) {
+    for (i = len - 1; i >= 0; --i) {
       target[i + targetStart] = this[i + start]
     }
-  } else if (len < 1000 || !Buffer.TYPED_ARRAY_SUPPORT) {
+  } else if (len < 1000) {
     // ascending copy from start
-    for (i = 0; i < len; i++) {
+    for (i = 0; i < len; ++i) {
       target[i + targetStart] = this[i + start]
     }
   } else {
@@ -1775,15 +1774,15 @@ Buffer.prototype.fill = function fill (val, start, end, encoding) {
 
   var i
   if (typeof val === 'number') {
-    for (i = start; i < end; i++) {
+    for (i = start; i < end; ++i) {
       this[i] = val
     }
   } else {
     var bytes = Buffer.isBuffer(val)
       ? val
-      : utf8ToBytes(new Buffer(val, encoding).toString())
+      : new Buffer(val, encoding)
     var len = bytes.length
-    for (i = 0; i < end - start; i++) {
+    for (i = 0; i < end - start; ++i) {
       this[i + start] = bytes[i % len]
     }
   }
@@ -1794,7 +1793,7 @@ Buffer.prototype.fill = function fill (val, start, end, encoding) {
 // HELPER FUNCTIONS
 // ================
 
-var INVALID_BASE64_RE = /[^+\/0-9A-Za-z-_]/g
+var INVALID_BASE64_RE = /[^+/0-9A-Za-z-_]/g
 
 function base64clean (str) {
   // Node strips out invalid characters like \n and \t from the string, base64-js does not
@@ -1825,7 +1824,7 @@ function utf8ToBytes (string, units) {
   var leadSurrogate = null
   var bytes = []
 
-  for (var i = 0; i < length; i++) {
+  for (var i = 0; i < length; ++i) {
     codePoint = string.charCodeAt(i)
 
     // is surrogate component
@@ -1900,7 +1899,7 @@ function utf8ToBytes (string, units) {
 
 function asciiToBytes (str) {
   var byteArray = []
-  for (var i = 0; i < str.length; i++) {
+  for (var i = 0; i < str.length; ++i) {
     // Node's code seems to be doing this and not & 0x7F..
     byteArray.push(str.charCodeAt(i) & 0xFF)
   }
@@ -1910,7 +1909,7 @@ function asciiToBytes (str) {
 function utf16leToBytes (str, units) {
   var c, hi, lo
   var byteArray = []
-  for (var i = 0; i < str.length; i++) {
+  for (var i = 0; i < str.length; ++i) {
     if ((units -= 2) < 0) break
 
     c = str.charCodeAt(i)
@@ -1928,7 +1927,7 @@ function base64ToBytes (str) {
 }
 
 function blitBuffer (src, dst, offset, length) {
-  for (var i = 0; i < length; i++) {
+  for (var i = 0; i < length; ++i) {
     if ((i + offset >= dst.length) || (i >= src.length)) break
     dst[i + offset] = src[i]
   }
@@ -1939,8 +1938,7 @@ function isnan (val) {
   return val !== val // eslint-disable-line no-self-compare
 }
 
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"base64-js":1,"ieee754":53,"isarray":56}],6:[function(require,module,exports){
+},{"base64-js":1,"ieee754":54}],6:[function(require,module,exports){
 (function (Buffer){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -2051,7 +2049,7 @@ function objectToString(o) {
 }
 
 }).call(this,{"isBuffer":require("../../is-buffer/index.js")})
-},{"../../is-buffer/index.js":55}],7:[function(require,module,exports){
+},{"../../is-buffer/index.js":56}],7:[function(require,module,exports){
 module.exports = function cleanAtrule(node, item, list) {
     if (node.block) {
         // otherwise removed at-rule don't prevent @import for removal
@@ -2208,7 +2206,7 @@ module.exports = function(ast, usageData) {
     });
 };
 
-},{"../../utils/walk.js":50,"./Atrule.js":7,"./Comment.js":8,"./Declaration.js":9,"./Identifier.js":10,"./Ruleset.js":11,"./Space.js":12}],14:[function(require,module,exports){
+},{"../../utils/walk.js":51,"./Atrule.js":7,"./Comment.js":8,"./Declaration.js":9,"./Identifier.js":10,"./Ruleset.js":11,"./Space.js":12}],14:[function(require,module,exports){
 var resolveKeyword = require('../../utils/names.js').keyword;
 var compressKeyframes = require('./atrule/keyframes.js');
 
@@ -2219,7 +2217,7 @@ module.exports = function(node) {
     }
 };
 
-},{"../../utils/names.js":47,"./atrule/keyframes.js":21}],15:[function(require,module,exports){
+},{"../../utils/names.js":48,"./atrule/keyframes.js":21}],15:[function(require,module,exports){
 // Can unquote attribute detection
 // Adopted implementation of Mathias Bynens
 // https://github.com/mathiasbynens/mothereff.in/blob/master/unquoted-attributes/eff.js
@@ -2403,7 +2401,7 @@ module.exports = function compressValue(node) {
     }
 };
 
-},{"../../utils/names.js":47,"./property/background.js":24,"./property/font-weight.js":25,"./property/font.js":26}],21:[function(require,module,exports){
+},{"../../utils/names.js":48,"./property/background.js":24,"./property/font-weight.js":25,"./property/font.js":26}],21:[function(require,module,exports){
 module.exports = function(node) {
     node.block.rules.each(function(ruleset) {
         ruleset.selector.selectors.each(function(simpleselector) {
@@ -2917,7 +2915,7 @@ module.exports = {
     compressHex: compressHex
 };
 
-},{"../../utils/list.js":46,"./Number.js":17}],23:[function(require,module,exports){
+},{"../../utils/list.js":47,"./Number.js":17}],23:[function(require,module,exports){
 var walk = require('../../utils/walk.js').all;
 var handlers = {
     Atrule: require('./Atrule.js'),
@@ -2941,7 +2939,7 @@ module.exports = function(ast) {
     });
 };
 
-},{"../../utils/walk.js":50,"./Atrule.js":14,"./Attribute.js":15,"./Dimension.js":16,"./Number.js":17,"./String.js":18,"./Url.js":19,"./Value.js":20,"./color.js":22}],24:[function(require,module,exports){
+},{"../../utils/walk.js":51,"./Atrule.js":14,"./Attribute.js":15,"./Dimension.js":16,"./Number.js":17,"./String.js":18,"./Url.js":19,"./Value.js":20,"./color.js":22}],24:[function(require,module,exports){
 var List = require('../../../utils/list.js');
 
 module.exports = function compressBackground(node) {
@@ -3009,7 +3007,7 @@ module.exports = function compressBackground(node) {
     node.sequence = new List(newValue);
 };
 
-},{"../../../utils/list.js":46}],25:[function(require,module,exports){
+},{"../../../utils/list.js":47}],25:[function(require,module,exports){
 module.exports = function compressFontWeight(node) {
     var value = node.sequence.head.data;
 
@@ -3082,19 +3080,25 @@ module.exports = function compressFont(node) {
 
 },{}],27:[function(require,module,exports){
 var List = require('../utils/list');
+var clone = require('../utils/clone');
 var usageUtils = require('./usage');
 var clean = require('./clean');
 var compress = require('./compress');
 var restructureBlock = require('./restructure');
 var walkRules = require('../utils/walk').rules;
 
-function readBlock(stylesheet) {
+function readRulesChunk(rules, specialComments) {
     var buffer = new List();
     var nonSpaceTokenInBuffer = false;
     var protectedComment;
 
-    stylesheet.rules.nextUntil(stylesheet.rules.head, function(node, item, list) {
-        if (node.type === 'Comment' && node.value.charAt(0) === '!') {
+    rules.nextUntil(rules.head, function(node, item, list) {
+        if (node.type === 'Comment') {
+            if (!specialComments || node.value.charAt(0) !== '!') {
+                list.remove(item);
+                return;
+            }
+
             if (nonSpaceTokenInBuffer || protectedComment) {
                 return true;
             }
@@ -3115,18 +3119,19 @@ function readBlock(stylesheet) {
         comment: protectedComment,
         stylesheet: {
             type: 'StyleSheet',
+            info: null,
             rules: buffer
         }
     };
 }
 
-function compressBlock(ast, usageData, num, logger) {
+function compressChunk(ast, firstAtrulesAllowed, usageData, num, logger) {
     logger('Compress block #' + num, null, true);
 
     var seed = 1;
-    ast.firstAtrulesAllowed = ast.firstAtrulesAllowed;
-    walkRules(ast, function() {
-        if (!this.stylesheet.id) {
+    walkRules(ast, function markStylesheets() {
+        if ('id' in this.stylesheet === false) {
+            this.stylesheet.firstAtrulesAllowed = firstAtrulesAllowed;
             this.stylesheet.id = seed++;
         }
     });
@@ -3143,43 +3148,65 @@ function compressBlock(ast, usageData, num, logger) {
     return ast;
 }
 
+function getCommentsOption(options) {
+    var comments = 'comments' in options ? options.comments : 'exclamation';
+
+    if (typeof comments === 'boolean') {
+        comments = comments ? 'exclamation' : false;
+    } else if (comments !== 'exclamation' && comments !== 'first-exclamation') {
+        comments = false;
+    }
+
+    return comments;
+}
+
+function getRestructureOption(options) {
+    return 'restructure' in options ? options.restructure :
+           'restructuring' in options ? options.restructuring :
+           true;
+}
+
+function wrapBlock(block) {
+    return new List([{
+        type: 'Ruleset',
+        selector: {
+            type: 'Selector',
+            selectors: new List([{
+                type: 'SimpleSelector',
+                sequence: new List([{
+                    type: 'Identifier',
+                    name: 'x'
+                }])
+            }])
+        },
+        block: block
+    }]);
+}
+
 module.exports = function compress(ast, options) {
+    ast = ast || { type: 'StyleSheet', info: null, rules: new List() };
     options = options || {};
-    ast = ast || { type: 'StyleSheet', rules: new List() };
 
     var logger = typeof options.logger === 'function' ? options.logger : Function();
-    var restructuring =
-        'restructure' in options ? options.restructure :
-        'restructuring' in options ? options.restructuring :
-        true;
-    var result = new List();
-    var block;
+    var specialComments = getCommentsOption(options);
+    var restructuring = getRestructureOption(options);
     var firstAtrulesAllowed = true;
-    var blockNum = 1;
-    var blockRules;
-    var blockMode = false;
     var usageData = false;
-    var info = ast.info || null;
+    var inputRules;
+    var outputRules = new List();
+    var chunk;
+    var chunkNum = 1;
+    var chunkRules;
 
-    if (ast.type !== 'StyleSheet') {
-        blockMode = true;
-        ast = {
-            type: 'StyleSheet',
-            rules: new List([{
-                type: 'Ruleset',
-                selector: {
-                    type: 'Selector',
-                    selectors: new List([{
-                        type: 'SimpleSelector',
-                        sequence: new List([{
-                            type: 'Identifier',
-                            name: 'x'
-                        }])
-                    }])
-                },
-                block: ast
-            }])
-        };
+    if (options.clone) {
+        ast = clone(ast);
+    }
+
+    if (ast.type === 'StyleSheet') {
+        inputRules = ast.rules;
+        ast.rules = outputRules;
+    } else {
+        inputRules = wrapBlock(ast);
     }
 
     if (options.usage) {
@@ -3187,40 +3214,39 @@ module.exports = function compress(ast, options) {
     }
 
     do {
-        block = readBlock(ast);
-        // console.log(JSON.stringify(block.stylesheet, null, 2));
-        block.stylesheet.firstAtrulesAllowed = firstAtrulesAllowed;
-        block.stylesheet = compressBlock(block.stylesheet, usageData, blockNum++, logger);
+        chunk = readRulesChunk(inputRules, Boolean(specialComments));
+
+        compressChunk(chunk.stylesheet, firstAtrulesAllowed, usageData, chunkNum++, logger);
 
         // structure optimisations
         if (restructuring) {
-            restructureBlock(block.stylesheet, usageData, logger);
+            restructureBlock(chunk.stylesheet, usageData, logger);
         }
 
-        blockRules = block.stylesheet.rules;
+        chunkRules = chunk.stylesheet.rules;
 
-        if (block.comment) {
-            // add \n before comment if there is another content in result
-            if (!result.isEmpty()) {
-                result.insert(List.createItem({
+        if (chunk.comment) {
+            // add \n before comment if there is another content in outputRules
+            if (!outputRules.isEmpty()) {
+                outputRules.insert(List.createItem({
                     type: 'Raw',
                     value: '\n'
                 }));
             }
 
-            result.insert(List.createItem(block.comment));
+            outputRules.insert(List.createItem(chunk.comment));
 
-            // add \n after comment if block is not empty
-            if (!blockRules.isEmpty()) {
-                result.insert(List.createItem({
+            // add \n after comment if chunk is not empty
+            if (!chunkRules.isEmpty()) {
+                outputRules.insert(List.createItem({
                     type: 'Raw',
                     value: '\n'
                 }));
             }
         }
 
-        if (firstAtrulesAllowed && !blockRules.isEmpty()) {
-            var lastRule = blockRules.last();
+        if (firstAtrulesAllowed && !chunkRules.isEmpty()) {
+            var lastRule = chunkRules.last();
 
             if (lastRule.type !== 'Atrule' ||
                (lastRule.name !== 'import' && lastRule.name !== 'charset')) {
@@ -3228,29 +3254,19 @@ module.exports = function compress(ast, options) {
             }
         }
 
-        result.appendList(blockRules);
-    } while (!ast.rules.isEmpty());
+        if (specialComments !== 'exclamation') {
+            specialComments = false;
+        }
 
-    if (blockMode) {
-        result = !result.isEmpty() ? result.first().block : {
-            type: 'Block',
-            info: info,
-            declarations: new List()
-        };
-    } else {
-        result = {
-            type: 'StyleSheet',
-            info: info,
-            rules: result
-        };
-    }
+        outputRules.appendList(chunkRules);
+    } while (!inputRules.isEmpty());
 
     return {
-        ast: result
+        ast: ast
     };
 };
 
-},{"../utils/list":46,"../utils/walk":50,"./clean":13,"./compress":23,"./restructure":35,"./usage":41}],28:[function(require,module,exports){
+},{"../utils/clone":46,"../utils/list":47,"../utils/walk":51,"./clean":13,"./compress":23,"./restructure":35,"./usage":41}],28:[function(require,module,exports){
 var utils = require('./utils.js');
 var walkRules = require('../../utils/walk.js').rules;
 
@@ -3300,7 +3316,7 @@ module.exports = function initialMergeRuleset(ast) {
     });
 };
 
-},{"../../utils/walk.js":50,"./utils.js":40}],29:[function(require,module,exports){
+},{"../../utils/walk.js":51,"./utils.js":40}],29:[function(require,module,exports){
 var walkRulesRight = require('../../utils/walk.js').rulesRight;
 
 function isMediaRule(node) {
@@ -3337,7 +3353,7 @@ module.exports = function rejoinAtrule(ast) {
     });
 };
 
-},{"../../utils/walk.js":50}],30:[function(require,module,exports){
+},{"../../utils/walk.js":51}],30:[function(require,module,exports){
 var List = require('../../utils/list.js');
 var walkRulesRight = require('../../utils/walk.js').rulesRight;
 
@@ -3381,7 +3397,7 @@ module.exports = function disjoinRuleset(ast) {
     });
 };
 
-},{"../../utils/list.js":46,"../../utils/walk.js":50}],31:[function(require,module,exports){
+},{"../../utils/list.js":47,"../../utils/walk.js":51}],31:[function(require,module,exports){
 var List = require('../../utils/list.js');
 var translate = require('../../utils/translate.js');
 var walkRulesRight = require('../../utils/walk.js').rulesRight;
@@ -3461,15 +3477,16 @@ function TRBL(name) {
 
 TRBL.prototype.getValueSequence = function(value, count) {
     var values = [];
-    var iehack = false;
+    var iehack = '';
     var hasBadValues = value.sequence.some(function(child) {
         var special = false;
 
         switch (child.type) {
             case 'Identifier':
                 switch (child.name) {
+                    case '\\0':
                     case '\\9':
-                        iehack = true;
+                        iehack = child.name;
                         return;
 
                     case 'inherit':
@@ -3498,8 +3515,13 @@ TRBL.prototype.getValueSequence = function(value, count) {
                 }
                 break;
 
+            case 'Hash': // color
             case 'Number':
             case 'Percentage':
+                break;
+
+            case 'Function':
+                special = child.name;
                 break;
 
             case 'Space':
@@ -3520,7 +3542,7 @@ TRBL.prototype.getValueSequence = function(value, count) {
         return false;
     }
 
-    if (typeof this.iehack === 'boolean' && this.iehack !== iehack) {
+    if (typeof this.iehack === 'string' && this.iehack !== iehack) {
         return false;
     }
 
@@ -3541,27 +3563,29 @@ TRBL.prototype.add = function(name, value, info) {
         var side = SIDE[name];
 
         if (side) {
-            if (side in sides) {
-                var values = this.getValueSequence(value, 1);
+            if (side in sides === false) {
+                return false;
+            }
 
-                if (!values || !values.length) {
+            var values = this.getValueSequence(value, 1);
+
+            if (!values || !values.length) {
+                return false;
+            }
+
+            // can mix only if specials are equal
+            for (var key in sides) {
+                if (sides[key] !== null && sides[key].special !== values[0].special) {
                     return false;
                 }
+            }
 
-                // can mix only if specials are equal
-                for (var key in sides) {
-                    if (sides[key] !== null && sides[key].special !== values[0].special) {
-                        return false;
-                    }
-                }
-
-                if (!this.canOverride(side, values[0])) {
-                    return true;
-                }
-
-                sides[side] = values[0];
+            if (!this.canOverride(side, values[0])) {
                 return true;
             }
+
+            sides[side] = values[0];
+            return true;
         } else if (name === this.name) {
             var values = this.getValueSequence(value, 4);
 
@@ -3678,7 +3702,7 @@ TRBL.prototype.getValue = function() {
         result.push({ type: 'Space' }, {
             type: 'Identifier',
             info: {},
-            name: '\\9'
+            name: this.iehack
         });
     }
 
@@ -3723,7 +3747,12 @@ function processRuleset(ruleset, shorts, shortDeclarations, lastShortSelector) {
         if (!shorthand || !shorthand.add(property, declaration.value, declaration.info)) {
             operation = REPLACE;
             shorthand = new TRBL(key);
-            shorthand.add(property, declaration.value, declaration.info);
+
+            // if can't parse value ignore it and break shorthand sequence
+            if (!shorthand.add(property, declaration.value, declaration.info)) {
+                lastShortSelector = null;
+                return;
+            }
         }
 
         shorts[key] = shorthand;
@@ -3800,7 +3829,7 @@ module.exports = function restructBlock(ast, indexer) {
     processShorthands(shortDeclarations, indexer.declaration);
 };
 
-},{"../../utils/list.js":46,"../../utils/translate.js":48,"../../utils/walk.js":50}],32:[function(require,module,exports){
+},{"../../utils/list.js":47,"../../utils/translate.js":49,"../../utils/walk.js":51}],32:[function(require,module,exports){
 var resolveProperty = require('../../utils/names.js').property;
 var resolveKeyword = require('../../utils/names.js').keyword;
 var walkRulesRight = require('../../utils/walk.js').rulesRight;
@@ -3815,6 +3844,14 @@ var DONT_MIX_VALUE = {
     // https://developer.mozilla.org/en/docs/Web/CSS/text-align
     'text-align': /^(start|end|match-parent|justify-all)$/i
 };
+
+var CURSOR_SAFE_VALUE = [
+    'auto', 'crosshair', 'default', 'move', 'text', 'wait', 'help',
+    'n-resize', 'e-resize', 's-resize', 'w-resize',
+    'ne-resize', 'nw-resize', 'se-resize', 'sw-resize',
+    'pointer', 'progress', 'not-allowed', 'no-drop', 'vertical-text', 'all-scroll',
+    'col-resize', 'row-resize'
+];
 
 var NEEDLESS_TABLE = {
     'border-width': ['border'],
@@ -3867,7 +3904,7 @@ function getPropertyFingerprint(propertyName, declaration, fingerprints) {
 
     if (!fingerprint) {
         var vendorId = '';
-        var hack9 = '';
+        var iehack = '';
         var special = {};
 
         declaration.value.sequence.each(function walk(node) {
@@ -3885,13 +3922,18 @@ function getPropertyFingerprint(propertyName, declaration, fingerprints) {
                         vendorId = resolveKeyword(name).vendor;
                     }
 
-                    if (name === '\\9') {
-                        hack9 = name;
+                    if (/\\[09]/.test(name)) {
+                        iehack = RegExp.lastMatch;
                     }
 
-                    if (DONT_MIX_VALUE.hasOwnProperty(realName) &&
-                        DONT_MIX_VALUE[realName].test(name)) {
-                        special[name] = true;
+                    if (realName === 'cursor') {
+                        if (CURSOR_SAFE_VALUE.indexOf(name) === -1) {
+                            special[name] = true;
+                        }
+                    } else if (DONT_MIX_VALUE.hasOwnProperty(realName)) {
+                        if (DONT_MIX_VALUE[realName].test(name)) {
+                            special[name] = true;
+                        }
                     }
 
                     break;
@@ -3941,7 +3983,7 @@ function getPropertyFingerprint(propertyName, declaration, fingerprints) {
             }
         });
 
-        fingerprint = '|' + Object.keys(special).sort() + '|' + hack9 + vendorId;
+        fingerprint = '|' + Object.keys(special).sort() + '|' + iehack + vendorId;
 
         fingerprints[declarationId] = fingerprint;
     }
@@ -4050,7 +4092,7 @@ module.exports = function restructBlock(ast) {
     });
 };
 
-},{"../../utils/names.js":47,"../../utils/translate.js":48,"../../utils/walk.js":50}],33:[function(require,module,exports){
+},{"../../utils/names.js":48,"../../utils/translate.js":49,"../../utils/walk.js":51}],33:[function(require,module,exports){
 var utils = require('./utils.js');
 var walkRules = require('../../utils/walk.js').rules;
 
@@ -4139,7 +4181,7 @@ module.exports = function mergeRuleset(ast) {
     });
 };
 
-},{"../../utils/walk.js":50,"./utils.js":40}],34:[function(require,module,exports){
+},{"../../utils/walk.js":51,"./utils.js":40}],34:[function(require,module,exports){
 var List = require('../../utils/list.js');
 var utils = require('./utils.js');
 var walkRulesRight = require('../../utils/walk.js').rulesRight;
@@ -4167,15 +4209,13 @@ function calcDeclarationsLength(tokens) {
     );
 }
 
-function inList(selector) {
-    return selector.compareMarker in this;
-}
-
 function processRuleset(node, item, list) {
     var avoidRulesMerge = this.stylesheet.avoidRulesMerge;
     var selectors = node.selector.selectors;
     var block = node.block;
-    var skippedCompareMarkers = Object.create(null);
+    var disallowDownMarkers = Object.create(null);
+    var allowMergeUp = true;
+    var allowMergeDown = true;
 
     list.prevUntil(item.prev, function(prev, prevItem) {
         // skip non-ruleset node if safe
@@ -4190,13 +4230,17 @@ function processRuleset(node, item, list) {
             return true;
         }
 
+        allowMergeDown = !prevSelectors.some(function(selector) {
+            return selector.compareMarker in disallowDownMarkers;
+        });
+
         // try prev ruleset if simpleselectors has no equal specifity and element selector
-        if (prevSelectors.some(inList, skippedCompareMarkers)) {
+        if (!allowMergeDown && !allowMergeUp) {
             return true;
         }
 
         // try to join by selectors
-        if (utils.isEqualLists(prevSelectors, selectors)) {
+        if (allowMergeUp && utils.isEqualLists(prevSelectors, selectors)) {
             prevBlock.declarations.appendList(block.declarations);
             list.remove(item);
             return true;
@@ -4210,8 +4254,11 @@ function processRuleset(node, item, list) {
         if (diff.eq.length) {
             if (!diff.ne1.length && !diff.ne2.length) {
                 // equal blocks
-                utils.addSelectors(selectors, prevSelectors);
-                list.remove(prevItem);
+                if (allowMergeDown) {
+                    utils.addSelectors(selectors, prevSelectors);
+                    list.remove(prevItem);
+                }
+
                 return true;
             } else if (!avoidRulesMerge) { /* probably we don't need to prevent those merges for @keyframes
                                               TODO: need to be checked */
@@ -4221,7 +4268,7 @@ function processRuleset(node, item, list) {
                     var selectorLength = calcSelectorLength(selectors);
                     var blockLength = calcDeclarationsLength(diff.eq); // declarations length
 
-                    if (selectorLength < blockLength) {
+                    if (allowMergeUp && selectorLength < blockLength) {
                         utils.addSelectors(prevSelectors, selectors);
                         block.declarations = new List(diff.ne1);
                     }
@@ -4230,7 +4277,7 @@ function processRuleset(node, item, list) {
                     var selectorLength = calcSelectorLength(prevSelectors);
                     var blockLength = calcDeclarationsLength(diff.eq); // declarations length
 
-                    if (selectorLength < blockLength) {
+                    if (allowMergeDown && selectorLength < blockLength) {
                         utils.addSelectors(selectors, prevSelectors);
                         prevBlock.declarations = new List(diff.ne2);
                     }
@@ -4247,7 +4294,7 @@ function processRuleset(node, item, list) {
 
                     // create new ruleset if declarations length greater than
                     // ruleset description overhead
-                    if (blockLength >= newBlockLength) {
+                    if (allowMergeDown && blockLength >= newBlockLength) {
                         var newRuleset = {
                             type: 'Ruleset',
                             info: {},
@@ -4269,8 +4316,18 @@ function processRuleset(node, item, list) {
             }
         }
 
+        if (allowMergeUp) {
+            // TODO: disallow up merge only if any property interception only (i.e. diff.ne2overrided.length > 0);
+            // await property families to find property interception correctly
+            allowMergeUp = !prevSelectors.some(function(prevSelector) {
+                return selectors.some(function(selector) {
+                    return selector.compareMarker === prevSelector.compareMarker;
+                });
+            });
+        }
+
         prevSelectors.each(function(data) {
-            skippedCompareMarkers[data.compareMarker] = true;
+            disallowDownMarkers[data.compareMarker] = true;
         });
     });
 };
@@ -4283,7 +4340,7 @@ module.exports = function restructRuleset(ast) {
     });
 };
 
-},{"../../utils/list.js":46,"../../utils/walk.js":50,"./utils.js":40}],35:[function(require,module,exports){
+},{"../../utils/list.js":47,"../../utils/walk.js":51,"./utils.js":40}],35:[function(require,module,exports){
 var prepare = require('./prepare/index.js');
 var initialMergeRuleset = require('./1-initialMergeRuleset.js');
 var mergeAtrule = require('./2-mergeAtrule.js');
@@ -4354,7 +4411,7 @@ module.exports = function createDeclarationIndexer() {
     };
 };
 
-},{"../../../utils/translate.js":48}],37:[function(require,module,exports){
+},{"../../../utils/translate.js":49}],37:[function(require,module,exports){
 var resolveKeyword = require('../../../utils/names.js').keyword;
 var walkRules = require('../../../utils/walk.js').rules;
 var translate = require('../../../utils/translate.js');
@@ -4400,7 +4457,7 @@ module.exports = function prepare(ast, usageData) {
     };
 };
 
-},{"../../../utils/names.js":47,"../../../utils/translate.js":48,"../../../utils/walk.js":50,"./createDeclarationIndexer.js":36,"./processSelector.js":38}],38:[function(require,module,exports){
+},{"../../../utils/names.js":48,"../../../utils/translate.js":49,"../../../utils/walk.js":51,"./createDeclarationIndexer.js":36,"./processSelector.js":38}],38:[function(require,module,exports){
 var translate = require('../../../utils/translate.js');
 var specificity = require('./specificity.js');
 
@@ -4471,6 +4528,13 @@ module.exports = function freeze(node, usageData) {
                     tagName = node.name;
                     break;
 
+                case 'Attribute':
+                    if (node.flags) {
+                        pseudos['[' + node.flags + ']'] = true;
+                        hasPseudo = true;
+                    }
+                    break;
+
                 case 'Combinator':
                     tagName = '*';
                     break;
@@ -4494,7 +4558,7 @@ module.exports = function freeze(node, usageData) {
     }
 };
 
-},{"../../../utils/translate.js":48,"./specificity.js":39}],39:[function(require,module,exports){
+},{"../../../utils/translate.js":49,"./specificity.js":39}],39:[function(require,module,exports){
 module.exports = function specificity(simpleSelector) {
     var A = 0;
     var B = 0;
@@ -4753,6 +4817,8 @@ var compress = require('./compressor');
 var translate = require('./utils/translate');
 var translateWithSourceMap = require('./utils/translateWithSourceMap');
 var walkers = require('./utils/walk');
+var clone = require('./utils/clone');
+var List = require('./utils/list');
 
 function debugOutput(name, options, startTime, data) {
     if (options.debug) {
@@ -4808,6 +4874,16 @@ function buildCompressOptions(options) {
     return options;
 }
 
+function runHandler(ast, options, handlers) {
+    if (!Array.isArray(handlers)) {
+        handlers = [handlers];
+    }
+
+    handlers.forEach(function(fn) {
+        fn(ast, options);
+    });
+}
+
 function minify(context, source, options) {
     options = options || {};
 
@@ -4823,10 +4899,24 @@ function minify(context, source, options) {
         })
     );
 
+    // before compress handlers
+    if (options.beforeCompress) {
+        debugOutput('beforeCompress', options, Date.now(),
+            runHandler(ast, options, options.beforeCompress)
+        );
+    }
+
     // compress
     var compressResult = debugOutput('compress', options, Date.now(),
         compress(ast, buildCompressOptions(options))
     );
+
+    // after compress handlers
+    if (options.afterCompress) {
+        debugOutput('afterCompress', options, Date.now(),
+            runHandler(compressResult, options, options.afterCompress)
+        );
+    }
 
     // translate
     if (options.sourceMap) {
@@ -4857,6 +4947,9 @@ function minifyBlock(source, options) {
 module.exports = {
     version: require('../package.json').version,
 
+    // classes
+    List: List,
+
     // main methods
     minify: minifyStylesheet,
     minifyBlock: minifyBlock,
@@ -4870,10 +4963,13 @@ module.exports = {
     // walkers
     walk: walkers.all,
     walkRules: walkers.rules,
-    walkRulesRight: walkers.rulesRight
+    walkRulesRight: walkers.rulesRight,
+
+    // utils
+    clone: clone
 };
 
-},{"../package.json":51,"./compressor":27,"./parser":44,"./utils/translate":48,"./utils/translateWithSourceMap":49,"./utils/walk":50}],43:[function(require,module,exports){
+},{"../package.json":52,"./compressor":27,"./parser":44,"./utils/clone":46,"./utils/list":47,"./utils/translate":49,"./utils/translateWithSourceMap":50,"./utils/walk":51}],43:[function(require,module,exports){
 exports.TokenType = {
     String: 'String',
     Comment: 'Comment',
@@ -4968,15 +5064,19 @@ var blockMode = {
 
 function parseError(message) {
     var error = new Error(message);
+    var offset = 0;
     var line = 1;
     var column = 1;
     var lines;
 
     if (scanner.token !== null) {
+        offset = scanner.token.offset;
         line = scanner.token.line;
         column = scanner.token.column;
     } else if (scanner.prevToken !== null) {
-        lines = scanner.prevToken.value.trimRight().split(/\n|\r\n?|\f/);
+        lines = scanner.prevToken.value.trimRight();
+        offset = scanner.prevToken.offset + lines.length;
+        lines = lines.split(/\n|\r\n?|\f/);
         line = scanner.prevToken.line + lines.length - 1;
         column = lines.length > 1
             ? lines[lines.length - 1].length + 1
@@ -4985,6 +5085,7 @@ function parseError(message) {
 
     error.name = 'CssSyntaxError';
     error.parseError = {
+        offset: offset,
         line: line,
         column: column
     };
@@ -5682,17 +5783,20 @@ function getAttribute() {
     readSC();
 
     if (scanner.token !== null && scanner.token.type !== TokenType.RightSquareBracket) {
-        node.operator = readAttrselector();
+        // avoid case `[name i]`
+        if (scanner.token.type !== TokenType.Identifier) {
+            node.operator = readAttrselector();
 
-        readSC();
+            readSC();
 
-        if (scanner.token !== null && scanner.token.type === TokenType.String) {
-            node.value = getString();
-        } else {
-            node.value = getIdentifier(false);
+            if (scanner.token !== null && scanner.token.type === TokenType.String) {
+                node.value = getString();
+            } else {
+                node.value = getIdentifier(false);
+            }
+
+            readSC();
         }
-
-        readSC();
 
         // attribute flags
         if (scanner.token !== null && scanner.token.type === TokenType.Identifier) {
@@ -5995,7 +6099,14 @@ function getFunctionArguments(scope) {
                 break;
 
             case TokenType.Comma:
-                removeTrailingSpaces(argument.sequence);
+                if (argument) {
+                    removeTrailingSpaces(argument.sequence);
+                } else {
+                    args.insert(List.createItem({
+                        type: 'Argument',
+                        sequence: new List()
+                    }));
+                }
                 scanner.next();
                 readSC();
                 argument = null;
@@ -6775,11 +6886,10 @@ module.exports = function parse(source, options) {
     scanner = null;
 
     // console.log(JSON.stringify(ast, null, 4));
-    // console.log(require('../utils/stringify.js')(ast, true));
     return ast;
 };
 
-},{"../utils/list":46,"./const":43,"./scanner":45}],45:[function(require,module,exports){
+},{"../utils/list":47,"./const":43,"./scanner":45}],45:[function(require,module,exports){
 'use strict';
 
 var TokenType = require('./const.js').TokenType;
@@ -6802,8 +6912,7 @@ var RIGHT_CURLY_BRACE = 125;
 var WHITESPACE = 1;
 var PUNCTUATOR = 2;
 var DIGIT = 3;
-var STRING_SQ = 4;
-var STRING_DQ = 5;
+var STRING = 4;
 
 var PUNCTUATION = {
     9:  TokenType.Tab,                // '\t'
@@ -6864,8 +6973,8 @@ SYMBOL_CATEGORY[N] = WHITESPACE;
 SYMBOL_CATEGORY[R] = WHITESPACE;
 SYMBOL_CATEGORY[F] = WHITESPACE;
 
-SYMBOL_CATEGORY[QUOTE] = STRING_SQ;
-SYMBOL_CATEGORY[DOUBLE_QUOTE] = STRING_DQ;
+SYMBOL_CATEGORY[QUOTE] = STRING;
+SYMBOL_CATEGORY[DOUBLE_QUOTE] = STRING;
 
 //
 // scanner
@@ -6876,7 +6985,6 @@ var Scanner = function(source, initBlockMode, initLine, initColumn) {
 
     this.pos = source.charCodeAt(0) === 0xFEFF ? 1 : 0;
     this.eof = this.pos === this.source.length;
-    this.lastPos = this.pos;
     this.line = typeof initLine === 'undefined' ? 1 : initLine;
     this.lineStartPos = typeof initColumn === 'undefined' ? -1 : -initColumn;
 
@@ -6907,17 +7015,18 @@ Scanner.prototype = {
         return token !== null && token.type === type;
     },
     next: function() {
-        this.prevToken = this.token;
+        var newToken = null;
 
         if (this.buffer.length !== 0) {
-            this.token = this.buffer.shift();
+            newToken = this.buffer.shift();
         } else if (!this.eof) {
-            this.token = this.getToken();
-        } else {
-            this.token = null;
+            newToken = this.getToken();
         }
 
-        return this.token;
+        this.prevToken = this.token;
+        this.token = newToken;
+
+        return newToken;
     },
 
     tokenize: function() {
@@ -6934,7 +7043,7 @@ Scanner.prototype = {
         var code = this.source.charCodeAt(this.pos);
         var line = this.line;
         var column = this.pos - this.lineStartPos;
-        var lastPos;
+        var offset = this.pos;
         var next;
         var type;
         var value;
@@ -6945,8 +7054,7 @@ Scanner.prototype = {
                 value = this.readDecimalNumber();
                 break;
 
-            case STRING_SQ:
-            case STRING_DQ:
+            case STRING:
                 type = TokenType.String;
                 value = this.readString(code);
                 break;
@@ -6958,7 +7066,7 @@ Scanner.prototype = {
 
             case PUNCTUATOR:
                 if (code === SLASH) {
-                    next = this.source.charCodeAt(this.pos + 1);
+                    next = this.pos + 1 < this.source.length ? this.source.charCodeAt(this.pos + 1) : 0;
 
                     if (next === STAR) { // /*
                         type = TokenType.Comment;
@@ -7007,15 +7115,13 @@ Scanner.prototype = {
                 this.urlMode = this.urlMode || value === 'url';
         }
 
-        lastPos = this.lastPos === 0 ? this.lastPos : this.lastPos - 1;
-        this.lastPos = this.pos;
         this.eof = this.pos === this.source.length;
 
         return {
             type: type,
             value: value,
 
-            offset: lastPos,
+            offset: offset,
             line: line,
             column: column
         };
@@ -7159,9 +7265,38 @@ Scanner.prototype = {
     }
 };
 
+// warm up tokenizer to elimitate code branches that never execute
+// fix soft deoptimizations (insufficient type feedback)
+new Scanner('\n\r\r\n\f//""\'\'/**/1a;.{url(a)}').lookup(1e3);
+
 module.exports = Scanner;
 
 },{"./const.js":43}],46:[function(require,module,exports){
+var List = require('./list');
+
+module.exports = function clone(node) {
+    var result = {};
+
+    for (var key in node) {
+        var value = node[key];
+
+        if (value) {
+            if (Array.isArray(value)) {
+                value = value.slice(0);
+            } else if (value instanceof List) {
+                value = new List(value.map(clone));
+            } else if (value.constructor === Object) {
+                value = clone(value);
+            }
+        }
+
+        result[key] = value;
+    }
+
+    return result;
+};
+
+},{"./list":47}],47:[function(require,module,exports){
 //
 //            item        item        item        item
 //          /------\    /------\    /------\    /------\
@@ -7552,7 +7687,7 @@ List.prototype.appendList = function(list) {
 
 module.exports = List;
 
-},{}],47:[function(require,module,exports){
+},{}],48:[function(require,module,exports){
 var hasOwnProperty = Object.prototype.hasOwnProperty;
 var knownKeywords = Object.create(null);
 var knownProperties = Object.create(null);
@@ -7627,7 +7762,7 @@ module.exports = {
     property: getPropertyInfo
 };
 
-},{}],48:[function(require,module,exports){
+},{}],49:[function(require,module,exports){
 function each(list) {
     if (list.head === null) {
         return '';
@@ -7658,17 +7793,19 @@ function translate(node) {
             return each(node.rules);
 
         case 'Atrule':
-            var result = '@' + node.name;
+            var nodes = ['@', node.name];
 
             if (node.expression && !node.expression.sequence.isEmpty()) {
-                result += ' ' + translate(node.expression);
+                nodes.push(' ', translate(node.expression));
             }
 
             if (node.block) {
-                return result + '{' + translate(node.block) + '}';
+                nodes.push('{', translate(node.block), '}');
             } else {
-                return result + ';';
+                nodes.push(';');
             }
+
+            return nodes.join('');
 
         case 'Ruleset':
             return translate(node.selector) + '{' + translate(node.block) + '}';
@@ -7677,14 +7814,19 @@ function translate(node) {
             return eachDelim(node.selectors, ',');
 
         case 'SimpleSelector':
-            return node.sequence.map(function(node) {
+            var nodes = node.sequence.map(function(node) {
                 // add extra spaces around /deep/ combinator since comment beginning/ending may to be produced
                 if (node.type === 'Combinator' && node.name === '/deep/') {
                     return ' ' + translate(node) + ' ';
                 }
 
                 return translate(node);
-            }).join('');
+            });
+
+            return nodes.join('');
+
+        case 'Block':
+            return eachDelim(node.declarations, ';');
 
         case 'Declaration':
             return translate(node.property) + ':' + translate(node.value);
@@ -7699,6 +7841,7 @@ function translate(node) {
 
         case 'Attribute':
             var result = translate(node.name);
+            var flagsPrefix = ' ';
 
             if (node.operator !== null) {
                 result += node.operator;
@@ -7706,10 +7849,15 @@ function translate(node) {
                 if (node.value !== null) {
                     result += translate(node.value);
 
-                    if (node.flags !== null) {
-                        result += (node.value.type !== 'String' ? ' ' : '') + node.flags;
+                    // space between string and flags is not required
+                    if (node.value.type === 'String') {
+                        flagsPrefix = '';
                     }
                 }
+            }
+
+            if (node.flags !== null) {
+                result += flagsPrefix + node.flags;
             }
 
             return '[' + result + ']';
@@ -7719,9 +7867,6 @@ function translate(node) {
 
         case 'Function':
             return node.name + '(' + eachDelim(node.arguments, ',') + ')';
-
-        case 'Block':
-            return eachDelim(node.declarations, ';');
 
         case 'Negation':
             return ':not(' + eachDelim(node.sequence, ',') + ')';
@@ -7797,7 +7942,7 @@ function translate(node) {
 
 module.exports = translate;
 
-},{}],49:[function(require,module,exports){
+},{}],50:[function(require,module,exports){
 var SourceMapGenerator = require('source-map').SourceMapGenerator;
 var SourceNode = require('source-map').SourceNode;
 
@@ -7872,30 +8017,6 @@ function generateSourceMap(root) {
         css: css,
         map: map
     };
-};
-
-function each(list) {
-    if (list.head === null) {
-        return '';
-    }
-
-    if (list.head === list.tail) {
-        return translate(list.head.data);
-    }
-
-    return list.map(translate).join('');
-}
-
-function eachDelim(list, delimeter) {
-    if (list.head === null) {
-        return '';
-    }
-
-    if (list.head === list.tail) {
-        return translate(list.head.data);
-    }
-
-    return list.map(translate).join(delimeter);
 }
 
 function createAnonymousSourceNode(children) {
@@ -7924,6 +8045,30 @@ function createSourceNode(info, children) {
         info.source,
         children
     );
+}
+
+function each(list) {
+    if (list.head === null) {
+        return '';
+    }
+
+    if (list.head === list.tail) {
+        return translate(list.head.data);
+    }
+
+    return list.map(translate).join('');
+}
+
+function eachDelim(list, delimeter) {
+    if (list.head === null) {
+        return '';
+    }
+
+    if (list.head === list.tail) {
+        return translate(list.head.data);
+    }
+
+    return list.map(translate).join(delimeter);
 }
 
 function translate(node) {
@@ -7955,14 +8100,16 @@ function translate(node) {
             return createAnonymousSourceNode(node.selectors.map(translate)).join(',');
 
         case 'SimpleSelector':
-            return createSourceNode(node.info, node.sequence.map(function(node) {
+            var nodes = node.sequence.map(function(node) {
                 // add extra spaces around /deep/ combinator since comment beginning/ending may to be produced
                 if (node.type === 'Combinator' && node.name === '/deep/') {
                     return ' ' + translate(node) + ' ';
                 }
 
                 return translate(node);
-            }));
+            });
+
+            return createSourceNode(node.info, nodes);
 
         case 'Block':
             return createAnonymousSourceNode(node.declarations.map(translate)).join(';');
@@ -7973,6 +8120,9 @@ function translate(node) {
                 [translate(node.property), ':', translate(node.value)]
             );
 
+        case 'Property':
+            return node.name;
+
         case 'Value':
             return node.important
                 ? each(node.sequence) + '!important'
@@ -7980,6 +8130,7 @@ function translate(node) {
 
         case 'Attribute':
             var result = translate(node.name);
+            var flagsPrefix = ' ';
 
             if (node.operator !== null) {
                 result += node.operator;
@@ -7987,10 +8138,15 @@ function translate(node) {
                 if (node.value !== null) {
                     result += translate(node.value);
 
-                    if (node.flags !== null) {
-                        result += (node.value.type !== 'String' ? ' ' : '') + node.flags;
+                    // space between string and flags is not required
+                    if (node.value.type === 'String') {
+                        flagsPrefix = '';
                     }
                 }
+            }
+
+            if (node.flags !== null) {
+                result += flagsPrefix + node.flags;
             }
 
             return '[' + result + ']';
@@ -8016,9 +8172,6 @@ function translate(node) {
 
         case 'Progid':
             return translate(node.value);
-
-        case 'Property':
-            return node.name;
 
         case 'Combinator':
             return node.name;
@@ -8082,8 +8235,7 @@ module.exports = function(node) {
     );
 };
 
-
-},{"source-map":110}],50:[function(require,module,exports){
+},{"source-map":113}],51:[function(require,module,exports){
 function walkRules(node, item, list) {
     switch (node.type) {
         case 'StyleSheet':
@@ -8274,49 +8426,57 @@ module.exports = {
     }
 };
 
-},{}],51:[function(require,module,exports){
+},{}],52:[function(require,module,exports){
 module.exports={
   "_args": [
     [
-      "csso@~2.0.0",
-      "/Users/ale/Documents/Code/svgo-compressor/node_modules/svgo"
+      {
+        "raw": "csso@~2.3.1",
+        "scope": null,
+        "escapedName": "csso",
+        "name": "csso",
+        "rawSpec": "~2.3.1",
+        "spec": ">=2.3.1 <2.4.0",
+        "type": "range"
+      },
+      "/Users/ale/Code/svgo-compressor/node_modules/svgo"
     ]
   ],
-  "_from": "csso@>=2.0.0 <2.1.0",
-  "_id": "csso@2.0.0",
+  "_from": "csso@>=2.3.1 <2.4.0",
+  "_id": "csso@2.3.1",
   "_inCache": true,
-  "_installable": true,
   "_location": "/csso",
-  "_nodeVersion": "5.0.0",
+  "_nodeVersion": "6.8.1",
   "_npmOperationalInternal": {
     "host": "packages-12-west.internal.npmjs.com",
-    "tmp": "tmp/csso-2.0.0.tgz_1459910123771_0.7308756134007126"
+    "tmp": "tmp/csso-2.3.1.tgz_1483700134530_0.4373721410520375"
   },
   "_npmUser": {
-    "email": "rdvornov@gmail.com",
-    "name": "lahmatiy"
+    "name": "lahmatiy",
+    "email": "rdvornov@gmail.com"
   },
-  "_npmVersion": "3.3.6",
+  "_npmVersion": "3.10.8",
   "_phantomChildren": {},
   "_requested": {
-    "name": "csso",
-    "raw": "csso@~2.0.0",
-    "rawSpec": "~2.0.0",
+    "raw": "csso@~2.3.1",
     "scope": null,
-    "spec": ">=2.0.0 <2.1.0",
+    "escapedName": "csso",
+    "name": "csso",
+    "rawSpec": "~2.3.1",
+    "spec": ">=2.3.1 <2.4.0",
     "type": "range"
   },
   "_requiredBy": [
     "/svgo"
   ],
-  "_resolved": "https://registry.npmjs.org/csso/-/csso-2.0.0.tgz",
-  "_shasum": "178b43a44621221c27756086f531e02f42900ee8",
+  "_resolved": "https://registry.npmjs.org/csso/-/csso-2.3.1.tgz",
+  "_shasum": "4f8d91a156f2f1c2aebb40b8fb1b5eb83d94d3b9",
   "_shrinkwrap": null,
-  "_spec": "csso@~2.0.0",
-  "_where": "/Users/ale/Documents/Code/svgo-compressor/node_modules/svgo",
+  "_spec": "csso@~2.3.1",
+  "_where": "/Users/ale/Code/svgo-compressor/node_modules/svgo",
   "author": {
-    "email": "skryzhanovsky@ya.ru",
     "name": "Sergey Kryzhanovsky",
+    "email": "skryzhanovsky@ya.ru",
     "url": "https://github.com/afelix"
   },
   "bin": {
@@ -8341,17 +8501,17 @@ module.exports={
   },
   "directories": {},
   "dist": {
-    "shasum": "178b43a44621221c27756086f531e02f42900ee8",
-    "tarball": "https://registry.npmjs.org/csso/-/csso-2.0.0.tgz"
+    "shasum": "4f8d91a156f2f1c2aebb40b8fb1b5eb83d94d3b9",
+    "tarball": "https://registry.npmjs.org/csso/-/csso-2.3.1.tgz"
   },
   "engines": {
     "node": ">=0.10.0"
   },
   "eslintConfig": {
     "env": {
-      "es6": true,
+      "node": true,
       "mocha": true,
-      "node": true
+      "es6": true
     },
     "rules": {
       "no-duplicate-case": 2,
@@ -8359,8 +8519,8 @@ module.exports={
       "no-unused-vars": [
         2,
         {
-          "args": "after-used",
-          "vars": "all"
+          "vars": "all",
+          "args": "after-used"
         }
       ]
     }
@@ -8373,7 +8533,7 @@ module.exports={
     "LICENSE",
     "README.md"
   ],
-  "gitHead": "2fe84ec40114e9e976fb20351f0c3765d77afef5",
+  "gitHead": "f56d62bc1309c6da042e6378988e54b0ab681d6e",
   "homepage": "https://github.com/css/csso",
   "keywords": [
     "css",
@@ -8386,16 +8546,16 @@ module.exports={
   "main": "./lib/index",
   "maintainers": [
     {
-      "email": "skryzhanovsky@gmail.com",
-      "name": "afelix"
+      "name": "afelix",
+      "email": "skryzhanovsky@gmail.com"
     },
     {
-      "email": "rdvornov@gmail.com",
-      "name": "lahmatiy"
+      "name": "lahmatiy",
+      "email": "rdvornov@gmail.com"
     },
     {
-      "email": "i@tadatuta.com",
-      "name": "tadatuta"
+      "name": "tadatuta",
+      "email": "i@tadatuta.com"
     }
   ],
   "name": "csso",
@@ -8417,10 +8577,10 @@ module.exports={
     "test": "mocha --reporter dot",
     "travis": "npm run codestyle-and-test && npm run coveralls"
   },
-  "version": "2.0.0"
+  "version": "2.3.1"
 }
 
-},{}],52:[function(require,module,exports){
+},{}],53:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -8480,8 +8640,12 @@ EventEmitter.prototype.emit = function(type) {
       er = arguments[1];
       if (er instanceof Error) {
         throw er; // Unhandled 'error' event
+      } else {
+        // At least give some kind of context to the user
+        var err = new Error('Uncaught, unspecified "error" event. (' + er + ')');
+        err.context = er;
+        throw err;
       }
-      throw TypeError('Uncaught, unspecified "error" event.');
     }
   }
 
@@ -8720,7 +8884,7 @@ function isUndefined(arg) {
   return arg === void 0;
 }
 
-},{}],53:[function(require,module,exports){
+},{}],54:[function(require,module,exports){
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
   var e, m
   var eLen = nBytes * 8 - mLen - 1
@@ -8806,7 +8970,7 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
   buffer[offset + i - d] |= s * 128
 }
 
-},{}],54:[function(require,module,exports){
+},{}],55:[function(require,module,exports){
 if (typeof Object.create === 'function') {
   // implementation from standard node.js 'util' module
   module.exports = function inherits(ctor, superCtor) {
@@ -8831,33 +8995,37 @@ if (typeof Object.create === 'function') {
   }
 }
 
-},{}],55:[function(require,module,exports){
-/**
- * Determine if an object is Buffer
+},{}],56:[function(require,module,exports){
+/*!
+ * Determine if an object is a Buffer
  *
- * Author:   Feross Aboukhadijeh <feross@feross.org> <http://feross.org>
- * License:  MIT
- *
- * `npm install is-buffer`
+ * @author   Feross Aboukhadijeh <feross@feross.org> <http://feross.org>
+ * @license  MIT
  */
 
+// The _isBuffer check is for Safari 5-7 support, because it's missing
+// Object.prototype.constructor. Remove this eventually
 module.exports = function (obj) {
-  return !!(obj != null &&
-    (obj._isBuffer || // For Safari 5-7 (missing Object.prototype.constructor)
-      (obj.constructor &&
-      typeof obj.constructor.isBuffer === 'function' &&
-      obj.constructor.isBuffer(obj))
-    ))
+  return obj != null && (isBuffer(obj) || isSlowBuffer(obj) || !!obj._isBuffer)
 }
 
-},{}],56:[function(require,module,exports){
+function isBuffer (obj) {
+  return !!obj.constructor && typeof obj.constructor.isBuffer === 'function' && obj.constructor.isBuffer(obj)
+}
+
+// For Node v0.10 support. Remove this eventually.
+function isSlowBuffer (obj) {
+  return typeof obj.readFloatLE === 'function' && typeof obj.slice === 'function' && isBuffer(obj.slice(0, 0))
+}
+
+},{}],57:[function(require,module,exports){
 var toString = {}.toString;
 
 module.exports = Array.isArray || function (arr) {
   return toString.call(arr) == '[object Array]';
 };
 
-},{}],57:[function(require,module,exports){
+},{}],58:[function(require,module,exports){
 'use strict';
 
 
@@ -8866,7 +9034,7 @@ var yaml = require('./lib/js-yaml.js');
 
 module.exports = yaml;
 
-},{"./lib/js-yaml.js":58}],58:[function(require,module,exports){
+},{"./lib/js-yaml.js":59}],59:[function(require,module,exports){
 'use strict';
 
 
@@ -8907,7 +9075,7 @@ module.exports.parse          = deprecated('parse');
 module.exports.compose        = deprecated('compose');
 module.exports.addConstructor = deprecated('addConstructor');
 
-},{"./js-yaml/dumper":60,"./js-yaml/exception":61,"./js-yaml/loader":62,"./js-yaml/schema":64,"./js-yaml/schema/core":65,"./js-yaml/schema/default_full":66,"./js-yaml/schema/default_safe":67,"./js-yaml/schema/failsafe":68,"./js-yaml/schema/json":69,"./js-yaml/type":70}],59:[function(require,module,exports){
+},{"./js-yaml/dumper":61,"./js-yaml/exception":62,"./js-yaml/loader":63,"./js-yaml/schema":65,"./js-yaml/schema/core":66,"./js-yaml/schema/default_full":67,"./js-yaml/schema/default_safe":68,"./js-yaml/schema/failsafe":69,"./js-yaml/schema/json":70,"./js-yaml/type":71}],60:[function(require,module,exports){
 'use strict';
 
 
@@ -8968,7 +9136,7 @@ module.exports.repeat         = repeat;
 module.exports.isNegativeZero = isNegativeZero;
 module.exports.extend         = extend;
 
-},{}],60:[function(require,module,exports){
+},{}],61:[function(require,module,exports){
 'use strict';
 
 /*eslint-disable no-use-before-define*/
@@ -9042,8 +9210,7 @@ function compileStyleMap(schema, map) {
     if (tag.slice(0, 2) === '!!') {
       tag = 'tag:yaml.org,2002:' + tag.slice(2);
     }
-
-    type = schema.compiledTypeMap[tag];
+    type = schema.compiledTypeMap['fallback'][tag];
 
     if (type && _hasOwnProperty.call(type.styleAliases, style)) {
       style = type.styleAliases[style];
@@ -9772,7 +9939,7 @@ function safeDump(input, options) {
 module.exports.dump     = dump;
 module.exports.safeDump = safeDump;
 
-},{"./common":59,"./exception":61,"./schema/default_full":66,"./schema/default_safe":67}],61:[function(require,module,exports){
+},{"./common":60,"./exception":62,"./schema/default_full":67,"./schema/default_safe":68}],62:[function(require,module,exports){
 // YAML error class. http://stackoverflow.com/questions/8458984
 //
 'use strict';
@@ -9817,7 +9984,7 @@ YAMLException.prototype.toString = function toString(compact) {
 
 module.exports = YAMLException;
 
-},{}],62:[function(require,module,exports){
+},{}],63:[function(require,module,exports){
 'use strict';
 
 /*eslint-disable max-len,no-use-before-define*/
@@ -10352,8 +10519,9 @@ function readSingleQuotedScalar(state, nodeIndent) {
       ch = state.input.charCodeAt(++state.position);
 
       if (ch === 0x27/* ' */) {
-        captureStart = captureEnd = state.position;
+        captureStart = state.position;
         state.position++;
+        captureEnd = state.position;
       } else {
         return true;
       }
@@ -11198,8 +11366,8 @@ function composeNode(state, parentIndent, nodeContext, allowToSeek, allowCompact
           break;
         }
       }
-    } else if (_hasOwnProperty.call(state.typeMap, state.tag)) {
-      type = state.typeMap[state.tag];
+    } else if (_hasOwnProperty.call(state.typeMap[state.kind || 'fallback'], state.tag)) {
+      type = state.typeMap[state.kind || 'fallback'][state.tag];
 
       if (state.result !== null && type.kind !== state.kind) {
         throwError(state, 'unacceptable node kind for !<' + state.tag + '> tag; it should be "' + type.kind + '", not "' + state.kind + '"');
@@ -11405,7 +11573,7 @@ module.exports.load        = load;
 module.exports.safeLoadAll = safeLoadAll;
 module.exports.safeLoad    = safeLoad;
 
-},{"./common":59,"./exception":61,"./mark":63,"./schema/default_full":66,"./schema/default_safe":67}],63:[function(require,module,exports){
+},{"./common":60,"./exception":62,"./mark":64,"./schema/default_full":67,"./schema/default_safe":68}],64:[function(require,module,exports){
 'use strict';
 
 
@@ -11483,7 +11651,7 @@ Mark.prototype.toString = function toString(compact) {
 
 module.exports = Mark;
 
-},{"./common":59}],64:[function(require,module,exports){
+},{"./common":60}],65:[function(require,module,exports){
 'use strict';
 
 /*eslint-disable max-len*/
@@ -11502,7 +11670,7 @@ function compileList(schema, name, result) {
 
   schema[name].forEach(function (currentType) {
     result.forEach(function (previousType, previousIndex) {
-      if (previousType.tag === currentType.tag) {
+      if (previousType.tag === currentType.tag && previousType.kind === currentType.kind) {
         exclude.push(previousIndex);
       }
     });
@@ -11517,16 +11685,20 @@ function compileList(schema, name, result) {
 
 
 function compileMap(/* lists... */) {
-  var result = {}, index, length;
+  var result = {
+        scalar: {},
+        sequence: {},
+        mapping: {},
+        fallback: {}
+      }, index, length;
 
   function collectType(type) {
-    result[type.tag] = type;
+    result[type.kind][type.tag] = result['fallback'][type.tag] = type;
   }
 
   for (index = 0, length = arguments.length; index < length; index += 1) {
     arguments[index].forEach(collectType);
   }
-
   return result;
 }
 
@@ -11589,7 +11761,7 @@ Schema.create = function createSchema() {
 
 module.exports = Schema;
 
-},{"./common":59,"./exception":61,"./type":70}],65:[function(require,module,exports){
+},{"./common":60,"./exception":62,"./type":71}],66:[function(require,module,exports){
 // Standard YAML's Core schema.
 // http://www.yaml.org/spec/1.2/spec.html#id2804923
 //
@@ -11609,7 +11781,7 @@ module.exports = new Schema({
   ]
 });
 
-},{"../schema":64,"./json":69}],66:[function(require,module,exports){
+},{"../schema":65,"./json":70}],67:[function(require,module,exports){
 // JS-YAML's default schema for `load` function.
 // It is not described in the YAML specification.
 //
@@ -11636,7 +11808,7 @@ module.exports = Schema.DEFAULT = new Schema({
   ]
 });
 
-},{"../schema":64,"../type/js/function":75,"../type/js/regexp":76,"../type/js/undefined":77,"./default_safe":67}],67:[function(require,module,exports){
+},{"../schema":65,"../type/js/function":76,"../type/js/regexp":77,"../type/js/undefined":78,"./default_safe":68}],68:[function(require,module,exports){
 // JS-YAML's default schema for `safeLoad` function.
 // It is not described in the YAML specification.
 //
@@ -11666,7 +11838,7 @@ module.exports = new Schema({
   ]
 });
 
-},{"../schema":64,"../type/binary":71,"../type/merge":79,"../type/omap":81,"../type/pairs":82,"../type/set":84,"../type/timestamp":86,"./core":65}],68:[function(require,module,exports){
+},{"../schema":65,"../type/binary":72,"../type/merge":80,"../type/omap":82,"../type/pairs":83,"../type/set":85,"../type/timestamp":87,"./core":66}],69:[function(require,module,exports){
 // Standard YAML's Failsafe schema.
 // http://www.yaml.org/spec/1.2/spec.html#id2802346
 
@@ -11685,7 +11857,7 @@ module.exports = new Schema({
   ]
 });
 
-},{"../schema":64,"../type/map":78,"../type/seq":83,"../type/str":85}],69:[function(require,module,exports){
+},{"../schema":65,"../type/map":79,"../type/seq":84,"../type/str":86}],70:[function(require,module,exports){
 // Standard YAML's JSON schema.
 // http://www.yaml.org/spec/1.2/spec.html#id2803231
 //
@@ -11712,7 +11884,7 @@ module.exports = new Schema({
   ]
 });
 
-},{"../schema":64,"../type/bool":72,"../type/float":73,"../type/int":74,"../type/null":80,"./failsafe":68}],70:[function(require,module,exports){
+},{"../schema":65,"../type/bool":73,"../type/float":74,"../type/int":75,"../type/null":81,"./failsafe":69}],71:[function(require,module,exports){
 'use strict';
 
 var YAMLException = require('./exception');
@@ -11775,7 +11947,7 @@ function Type(tag, options) {
 
 module.exports = Type;
 
-},{"./exception":61}],71:[function(require,module,exports){
+},{"./exception":62}],72:[function(require,module,exports){
 'use strict';
 
 /*eslint-disable no-bitwise*/
@@ -11912,7 +12084,7 @@ module.exports = new Type('tag:yaml.org,2002:binary', {
   represent: representYamlBinary
 });
 
-},{"../type":70}],72:[function(require,module,exports){
+},{"../type":71}],73:[function(require,module,exports){
 'use strict';
 
 var Type = require('../type');
@@ -11949,7 +12121,7 @@ module.exports = new Type('tag:yaml.org,2002:bool', {
   defaultStyle: 'lowercase'
 });
 
-},{"../type":70}],73:[function(require,module,exports){
+},{"../type":71}],74:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -12056,7 +12228,7 @@ module.exports = new Type('tag:yaml.org,2002:float', {
   defaultStyle: 'lowercase'
 });
 
-},{"../common":59,"../type":70}],74:[function(require,module,exports){
+},{"../common":60,"../type":71}],75:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -12226,7 +12398,7 @@ module.exports = new Type('tag:yaml.org,2002:int', {
   }
 });
 
-},{"../common":59,"../type":70}],75:[function(require,module,exports){
+},{"../common":60,"../type":71}],76:[function(require,module,exports){
 'use strict';
 
 var esprima;
@@ -12312,7 +12484,7 @@ module.exports = new Type('tag:yaml.org,2002:js/function', {
   represent: representJavascriptFunction
 });
 
-},{"../../type":70}],76:[function(require,module,exports){
+},{"../../type":71}],77:[function(require,module,exports){
 'use strict';
 
 var Type = require('../../type');
@@ -12374,7 +12546,7 @@ module.exports = new Type('tag:yaml.org,2002:js/regexp', {
   represent: representJavascriptRegExp
 });
 
-},{"../../type":70}],77:[function(require,module,exports){
+},{"../../type":71}],78:[function(require,module,exports){
 'use strict';
 
 var Type = require('../../type');
@@ -12404,7 +12576,7 @@ module.exports = new Type('tag:yaml.org,2002:js/undefined', {
   represent: representJavascriptUndefined
 });
 
-},{"../../type":70}],78:[function(require,module,exports){
+},{"../../type":71}],79:[function(require,module,exports){
 'use strict';
 
 var Type = require('../type');
@@ -12414,7 +12586,7 @@ module.exports = new Type('tag:yaml.org,2002:map', {
   construct: function (data) { return data !== null ? data : {}; }
 });
 
-},{"../type":70}],79:[function(require,module,exports){
+},{"../type":71}],80:[function(require,module,exports){
 'use strict';
 
 var Type = require('../type');
@@ -12428,7 +12600,7 @@ module.exports = new Type('tag:yaml.org,2002:merge', {
   resolve: resolveYamlMerge
 });
 
-},{"../type":70}],80:[function(require,module,exports){
+},{"../type":71}],81:[function(require,module,exports){
 'use strict';
 
 var Type = require('../type');
@@ -12464,7 +12636,7 @@ module.exports = new Type('tag:yaml.org,2002:null', {
   defaultStyle: 'lowercase'
 });
 
-},{"../type":70}],81:[function(require,module,exports){
+},{"../type":71}],82:[function(require,module,exports){
 'use strict';
 
 var Type = require('../type');
@@ -12510,7 +12682,7 @@ module.exports = new Type('tag:yaml.org,2002:omap', {
   construct: constructYamlOmap
 });
 
-},{"../type":70}],82:[function(require,module,exports){
+},{"../type":71}],83:[function(require,module,exports){
 'use strict';
 
 var Type = require('../type');
@@ -12565,7 +12737,7 @@ module.exports = new Type('tag:yaml.org,2002:pairs', {
   construct: constructYamlPairs
 });
 
-},{"../type":70}],83:[function(require,module,exports){
+},{"../type":71}],84:[function(require,module,exports){
 'use strict';
 
 var Type = require('../type');
@@ -12575,7 +12747,7 @@ module.exports = new Type('tag:yaml.org,2002:seq', {
   construct: function (data) { return data !== null ? data : []; }
 });
 
-},{"../type":70}],84:[function(require,module,exports){
+},{"../type":71}],85:[function(require,module,exports){
 'use strict';
 
 var Type = require('../type');
@@ -12606,7 +12778,7 @@ module.exports = new Type('tag:yaml.org,2002:set', {
   construct: constructYamlSet
 });
 
-},{"../type":70}],85:[function(require,module,exports){
+},{"../type":71}],86:[function(require,module,exports){
 'use strict';
 
 var Type = require('../type');
@@ -12616,7 +12788,7 @@ module.exports = new Type('tag:yaml.org,2002:str', {
   construct: function (data) { return data !== null ? data : ''; }
 });
 
-},{"../type":70}],86:[function(require,module,exports){
+},{"../type":71}],87:[function(require,module,exports){
 'use strict';
 
 var Type = require('../type');
@@ -12706,7 +12878,54 @@ module.exports = new Type('tag:yaml.org,2002:timestamp', {
   represent: representYamlTimestamp
 });
 
-},{"../type":70}],87:[function(require,module,exports){
+},{"../type":71}],88:[function(require,module,exports){
+exports.endianness = function () { return 'LE' };
+
+exports.hostname = function () {
+    if (typeof location !== 'undefined') {
+        return location.hostname
+    }
+    else return '';
+};
+
+exports.loadavg = function () { return [] };
+
+exports.uptime = function () { return 0 };
+
+exports.freemem = function () {
+    return Number.MAX_VALUE;
+};
+
+exports.totalmem = function () {
+    return Number.MAX_VALUE;
+};
+
+exports.cpus = function () { return [] };
+
+exports.type = function () { return 'Browser' };
+
+exports.release = function () {
+    if (typeof navigator !== 'undefined') {
+        return navigator.appVersion;
+    }
+    return '';
+};
+
+exports.networkInterfaces
+= exports.getNetworkInterfaces
+= function () { return {} };
+
+exports.arch = function () { return 'javascript' };
+
+exports.platform = function () { return 'browser' };
+
+exports.tmpdir = exports.tmpDir = function () {
+    return '/tmp';
+};
+
+exports.EOL = '\n';
+
+},{}],89:[function(require,module,exports){
 (function (process){
 'use strict';
 
@@ -12753,10 +12972,96 @@ function nextTick(fn, arg1, arg2, arg3) {
 }
 
 }).call(this,require('_process'))
-},{"_process":88}],88:[function(require,module,exports){
+},{"_process":90}],90:[function(require,module,exports){
 // shim for using process in browser
-
 var process = module.exports = {};
+
+// cached from whatever global is present so that test runners that stub it
+// don't break things.  But we need to wrap it in a try catch in case it is
+// wrapped in strict mode code which doesn't define any globals.  It's inside a
+// function because try/catches deoptimize in certain engines.
+
+var cachedSetTimeout;
+var cachedClearTimeout;
+
+function defaultSetTimout() {
+    throw new Error('setTimeout has not been defined');
+}
+function defaultClearTimeout () {
+    throw new Error('clearTimeout has not been defined');
+}
+(function () {
+    try {
+        if (typeof setTimeout === 'function') {
+            cachedSetTimeout = setTimeout;
+        } else {
+            cachedSetTimeout = defaultSetTimout;
+        }
+    } catch (e) {
+        cachedSetTimeout = defaultSetTimout;
+    }
+    try {
+        if (typeof clearTimeout === 'function') {
+            cachedClearTimeout = clearTimeout;
+        } else {
+            cachedClearTimeout = defaultClearTimeout;
+        }
+    } catch (e) {
+        cachedClearTimeout = defaultClearTimeout;
+    }
+} ())
+function runTimeout(fun) {
+    if (cachedSetTimeout === setTimeout) {
+        //normal enviroments in sane situations
+        return setTimeout(fun, 0);
+    }
+    // if setTimeout wasn't available but was latter defined
+    if ((cachedSetTimeout === defaultSetTimout || !cachedSetTimeout) && setTimeout) {
+        cachedSetTimeout = setTimeout;
+        return setTimeout(fun, 0);
+    }
+    try {
+        // when when somebody has screwed with setTimeout but no I.E. maddness
+        return cachedSetTimeout(fun, 0);
+    } catch(e){
+        try {
+            // When we are in I.E. but the script has been evaled so I.E. doesn't trust the global object when called normally
+            return cachedSetTimeout.call(null, fun, 0);
+        } catch(e){
+            // same as above but when it's a version of I.E. that must have the global object for 'this', hopfully our context correct otherwise it will throw a global error
+            return cachedSetTimeout.call(this, fun, 0);
+        }
+    }
+
+
+}
+function runClearTimeout(marker) {
+    if (cachedClearTimeout === clearTimeout) {
+        //normal enviroments in sane situations
+        return clearTimeout(marker);
+    }
+    // if clearTimeout wasn't available but was latter defined
+    if ((cachedClearTimeout === defaultClearTimeout || !cachedClearTimeout) && clearTimeout) {
+        cachedClearTimeout = clearTimeout;
+        return clearTimeout(marker);
+    }
+    try {
+        // when when somebody has screwed with setTimeout but no I.E. maddness
+        return cachedClearTimeout(marker);
+    } catch (e){
+        try {
+            // When we are in I.E. but the script has been evaled so I.E. doesn't  trust the global object when called normally
+            return cachedClearTimeout.call(null, marker);
+        } catch (e){
+            // same as above but when it's a version of I.E. that must have the global object for 'this', hopfully our context correct otherwise it will throw a global error.
+            // Some versions of I.E. have different rules for clearTimeout vs setTimeout
+            return cachedClearTimeout.call(this, marker);
+        }
+    }
+
+
+
+}
 var queue = [];
 var draining = false;
 var currentQueue;
@@ -12781,7 +13086,7 @@ function drainQueue() {
     if (draining) {
         return;
     }
-    var timeout = setTimeout(cleanUpNextTick);
+    var timeout = runTimeout(cleanUpNextTick);
     draining = true;
 
     var len = queue.length;
@@ -12798,7 +13103,7 @@ function drainQueue() {
     }
     currentQueue = null;
     draining = false;
-    clearTimeout(timeout);
+    runClearTimeout(timeout);
 }
 
 process.nextTick = function (fun) {
@@ -12810,7 +13115,7 @@ process.nextTick = function (fun) {
     }
     queue.push(new Item(fun, args));
     if (queue.length === 1 && !draining) {
-        setTimeout(drainQueue, 0);
+        runTimeout(drainQueue);
     }
 };
 
@@ -12849,10 +13154,10 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],89:[function(require,module,exports){
+},{}],91:[function(require,module,exports){
 module.exports = require("./lib/_stream_duplex.js")
 
-},{"./lib/_stream_duplex.js":90}],90:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":92}],92:[function(require,module,exports){
 // a duplex stream is just a stream that is both readable and writable.
 // Since JS doesn't have multiple prototypal inheritance, this class
 // prototypally inherits from Readable, and then parasitically from
@@ -12928,7 +13233,7 @@ function forEach(xs, f) {
     f(xs[i], i);
   }
 }
-},{"./_stream_readable":92,"./_stream_writable":94,"core-util-is":6,"inherits":54,"process-nextick-args":87}],91:[function(require,module,exports){
+},{"./_stream_readable":94,"./_stream_writable":96,"core-util-is":6,"inherits":55,"process-nextick-args":89}],93:[function(require,module,exports){
 // a passthrough stream.
 // basically just the most minimal sort of Transform stream.
 // Every written chunk gets output as-is.
@@ -12955,7 +13260,7 @@ function PassThrough(options) {
 PassThrough.prototype._transform = function (chunk, encoding, cb) {
   cb(null, chunk);
 };
-},{"./_stream_transform":93,"core-util-is":6,"inherits":54}],92:[function(require,module,exports){
+},{"./_stream_transform":95,"core-util-is":6,"inherits":55}],94:[function(require,module,exports){
 (function (process){
 'use strict';
 
@@ -12967,6 +13272,10 @@ var processNextTick = require('process-nextick-args');
 
 /*<replacement>*/
 var isArray = require('isarray');
+/*</replacement>*/
+
+/*<replacement>*/
+var Duplex;
 /*</replacement>*/
 
 Readable.ReadableState = ReadableState;
@@ -13010,24 +13319,25 @@ if (debugUtil && debugUtil.debuglog) {
 }
 /*</replacement>*/
 
+var BufferList = require('./internal/streams/BufferList');
 var StringDecoder;
 
 util.inherits(Readable, Stream);
 
-var hasPrependListener = typeof EE.prototype.prependListener === 'function';
-
 function prependListener(emitter, event, fn) {
-  if (hasPrependListener) return emitter.prependListener(event, fn);
-
-  // This is a brutally ugly hack to make sure that our error handler
-  // is attached before any userland ones.  NEVER DO THIS. This is here
-  // only because this code needs to continue to work with older versions
-  // of Node.js that do not include the prependListener() method. The goal
-  // is to eventually remove this hack.
-  if (!emitter._events || !emitter._events[event]) emitter.on(event, fn);else if (isArray(emitter._events[event])) emitter._events[event].unshift(fn);else emitter._events[event] = [fn, emitter._events[event]];
+  // Sadly this is not cacheable as some libraries bundle their own
+  // event emitter implementation with them.
+  if (typeof emitter.prependListener === 'function') {
+    return emitter.prependListener(event, fn);
+  } else {
+    // This is a hack to make sure that our error handler is attached before any
+    // userland ones.  NEVER DO THIS. This is here only because this code needs
+    // to continue to work with older versions of Node.js that do not include
+    // the prependListener() method. The goal is to eventually remove this hack.
+    if (!emitter._events || !emitter._events[event]) emitter.on(event, fn);else if (isArray(emitter._events[event])) emitter._events[event].unshift(fn);else emitter._events[event] = [fn, emitter._events[event]];
+  }
 }
 
-var Duplex;
 function ReadableState(options, stream) {
   Duplex = Duplex || require('./_stream_duplex');
 
@@ -13048,7 +13358,10 @@ function ReadableState(options, stream) {
   // cast to ints.
   this.highWaterMark = ~ ~this.highWaterMark;
 
-  this.buffer = [];
+  // A linked list is used to store data chunks instead of an array because the
+  // linked list can remove elements from the beginning faster than
+  // array.shift()
+  this.buffer = new BufferList();
   this.length = 0;
   this.pipes = null;
   this.pipesCount = 0;
@@ -13094,7 +13407,6 @@ function ReadableState(options, stream) {
   }
 }
 
-var Duplex;
 function Readable(options) {
   Duplex = Duplex || require('./_stream_duplex');
 
@@ -13211,7 +13523,8 @@ function computeNewHighWaterMark(n) {
   if (n >= MAX_HWM) {
     n = MAX_HWM;
   } else {
-    // Get the next highest power of 2
+    // Get the next highest power of 2 to prevent increasing hwm excessively in
+    // tiny amounts
     n--;
     n |= n >>> 1;
     n |= n >>> 2;
@@ -13223,44 +13536,34 @@ function computeNewHighWaterMark(n) {
   return n;
 }
 
+// This function is designed to be inlinable, so please take care when making
+// changes to the function body.
 function howMuchToRead(n, state) {
-  if (state.length === 0 && state.ended) return 0;
-
-  if (state.objectMode) return n === 0 ? 0 : 1;
-
-  if (n === null || isNaN(n)) {
-    // only flow one buffer at a time
-    if (state.flowing && state.buffer.length) return state.buffer[0].length;else return state.length;
+  if (n <= 0 || state.length === 0 && state.ended) return 0;
+  if (state.objectMode) return 1;
+  if (n !== n) {
+    // Only flow one buffer at a time
+    if (state.flowing && state.length) return state.buffer.head.data.length;else return state.length;
   }
-
-  if (n <= 0) return 0;
-
-  // If we're asking for more than the target buffer level,
-  // then raise the water mark.  Bump up to the next highest
-  // power of 2, to prevent increasing it excessively in tiny
-  // amounts.
+  // If we're asking for more than the current hwm, then raise the hwm.
   if (n > state.highWaterMark) state.highWaterMark = computeNewHighWaterMark(n);
-
-  // don't have that much.  return null, unless we've ended.
-  if (n > state.length) {
-    if (!state.ended) {
-      state.needReadable = true;
-      return 0;
-    } else {
-      return state.length;
-    }
+  if (n <= state.length) return n;
+  // Don't have enough
+  if (!state.ended) {
+    state.needReadable = true;
+    return 0;
   }
-
-  return n;
+  return state.length;
 }
 
 // you can override either this method, or the async _read(n) below.
 Readable.prototype.read = function (n) {
   debug('read', n);
+  n = parseInt(n, 10);
   var state = this._readableState;
   var nOrig = n;
 
-  if (typeof n !== 'number' || n > 0) state.emittedReadable = false;
+  if (n !== 0) state.emittedReadable = false;
 
   // if we're doing read(0) to trigger a readable event, but we
   // already have a bunch of data in the buffer, then just trigger
@@ -13316,9 +13619,7 @@ Readable.prototype.read = function (n) {
   if (state.ended || state.reading) {
     doRead = false;
     debug('reading or ended', doRead);
-  }
-
-  if (doRead) {
+  } else if (doRead) {
     debug('do read');
     state.reading = true;
     state.sync = true;
@@ -13327,11 +13628,10 @@ Readable.prototype.read = function (n) {
     // call internal read method
     this._read(state.highWaterMark);
     state.sync = false;
+    // If _read pushed data synchronously, then `reading` will be false,
+    // and we need to re-evaluate how much data we can return to the user.
+    if (!state.reading) n = howMuchToRead(nOrig, state);
   }
-
-  // If _read pushed data synchronously, then `reading` will be false,
-  // and we need to re-evaluate how much data we can return to the user.
-  if (doRead && !state.reading) n = howMuchToRead(nOrig, state);
 
   var ret;
   if (n > 0) ret = fromList(n, state);else ret = null;
@@ -13339,16 +13639,18 @@ Readable.prototype.read = function (n) {
   if (ret === null) {
     state.needReadable = true;
     n = 0;
+  } else {
+    state.length -= n;
   }
 
-  state.length -= n;
+  if (state.length === 0) {
+    // If we have nothing in the buffer, then we want to know
+    // as soon as we *do* get something into the buffer.
+    if (!state.ended) state.needReadable = true;
 
-  // If we have nothing in the buffer, then we want to know
-  // as soon as we *do* get something into the buffer.
-  if (state.length === 0 && !state.ended) state.needReadable = true;
-
-  // If we tried to read() past the EOF, then emit end on the next tick.
-  if (nOrig !== n && state.ended && state.length === 0) endReadable(this);
+    // If we tried to read() past the EOF, then emit end on the next tick.
+    if (nOrig !== n && state.ended) endReadable(this);
+  }
 
   if (ret !== null) this.emit('data', ret);
 
@@ -13427,7 +13729,7 @@ function maybeReadMore_(stream, state) {
 // for virtual (non-string, non-buffer) streams, "length" is somewhat
 // arbitrary, and perhaps not very meaningful.
 Readable.prototype._read = function (n) {
-  this.emit('error', new Error('not implemented'));
+  this.emit('error', new Error('_read() is not implemented'));
 };
 
 Readable.prototype.pipe = function (dest, pipeOpts) {
@@ -13496,11 +13798,17 @@ Readable.prototype.pipe = function (dest, pipeOpts) {
     if (state.awaitDrain && (!dest._writableState || dest._writableState.needDrain)) ondrain();
   }
 
+  // If the user pushes more data while we're writing to dest then we'll end up
+  // in ondata again. However, we only want to increase awaitDrain once because
+  // dest will only emit one 'drain' event for the multiple writes.
+  // => Introduce a guard on increasing awaitDrain.
+  var increasedAwaitDrain = false;
   src.on('data', ondata);
   function ondata(chunk) {
     debug('ondata');
+    increasedAwaitDrain = false;
     var ret = dest.write(chunk);
-    if (false === ret) {
+    if (false === ret && !increasedAwaitDrain) {
       // If the user unpiped during `dest.write()`, it is possible
       // to get stuck in a permanently paused state if that write
       // also returned false.
@@ -13508,6 +13816,7 @@ Readable.prototype.pipe = function (dest, pipeOpts) {
       if ((state.pipesCount === 1 && state.pipes === dest || state.pipesCount > 1 && indexOf(state.pipes, dest) !== -1) && !cleanedUp) {
         debug('false write response, pause', src._readableState.awaitDrain);
         src._readableState.awaitDrain++;
+        increasedAwaitDrain = true;
       }
       src.pause();
     }
@@ -13598,16 +13907,16 @@ Readable.prototype.unpipe = function (dest) {
     state.pipesCount = 0;
     state.flowing = false;
 
-    for (var _i = 0; _i < len; _i++) {
-      dests[_i].emit('unpipe', this);
+    for (var i = 0; i < len; i++) {
+      dests[i].emit('unpipe', this);
     }return this;
   }
 
   // try to find the right one.
-  var i = indexOf(state.pipes, dest);
-  if (i === -1) return this;
+  var index = indexOf(state.pipes, dest);
+  if (index === -1) return this;
 
-  state.pipes.splice(i, 1);
+  state.pipes.splice(index, 1);
   state.pipesCount -= 1;
   if (state.pipesCount === 1) state.pipes = state.pipes[0];
 
@@ -13621,18 +13930,14 @@ Readable.prototype.unpipe = function (dest) {
 Readable.prototype.on = function (ev, fn) {
   var res = Stream.prototype.on.call(this, ev, fn);
 
-  // If listening to data, and it has not explicitly been paused,
-  // then call resume to start the flow of data on the next tick.
-  if (ev === 'data' && false !== this._readableState.flowing) {
-    this.resume();
-  }
-
-  if (ev === 'readable' && !this._readableState.endEmitted) {
+  if (ev === 'data') {
+    // Start flowing on next tick if stream isn't explicitly paused
+    if (this._readableState.flowing !== false) this.resume();
+  } else if (ev === 'readable') {
     var state = this._readableState;
-    if (!state.readableListening) {
-      state.readableListening = true;
+    if (!state.endEmitted && !state.readableListening) {
+      state.readableListening = state.needReadable = true;
       state.emittedReadable = false;
-      state.needReadable = true;
       if (!state.reading) {
         processNextTick(nReadingNextTick, this);
       } else if (state.length) {
@@ -13676,6 +13981,7 @@ function resume_(stream, state) {
   }
 
   state.resumeScheduled = false;
+  state.awaitDrain = 0;
   stream.emit('resume');
   flow(stream);
   if (state.flowing && !state.reading) stream.read(0);
@@ -13694,11 +14000,7 @@ Readable.prototype.pause = function () {
 function flow(stream) {
   var state = stream._readableState;
   debug('flow', state.flowing);
-  if (state.flowing) {
-    do {
-      var chunk = stream.read();
-    } while (null !== chunk && state.flowing);
-  }
+  while (state.flowing && stream.read() !== null) {}
 }
 
 // wrap an old-style stream as the async data source.
@@ -13769,50 +14071,101 @@ Readable._fromList = fromList;
 
 // Pluck off n bytes from an array of buffers.
 // Length is the combined lengths of all the buffers in the list.
+// This function is designed to be inlinable, so please take care when making
+// changes to the function body.
 function fromList(n, state) {
-  var list = state.buffer;
-  var length = state.length;
-  var stringMode = !!state.decoder;
-  var objectMode = !!state.objectMode;
+  // nothing buffered
+  if (state.length === 0) return null;
+
   var ret;
-
-  // nothing in the list, definitely empty.
-  if (list.length === 0) return null;
-
-  if (length === 0) ret = null;else if (objectMode) ret = list.shift();else if (!n || n >= length) {
-    // read it all, truncate the array.
-    if (stringMode) ret = list.join('');else if (list.length === 1) ret = list[0];else ret = Buffer.concat(list, length);
-    list.length = 0;
+  if (state.objectMode) ret = state.buffer.shift();else if (!n || n >= state.length) {
+    // read it all, truncate the list
+    if (state.decoder) ret = state.buffer.join('');else if (state.buffer.length === 1) ret = state.buffer.head.data;else ret = state.buffer.concat(state.length);
+    state.buffer.clear();
   } else {
-    // read just some of it.
-    if (n < list[0].length) {
-      // just take a part of the first list item.
-      // slice is the same for buffers and strings.
-      var buf = list[0];
-      ret = buf.slice(0, n);
-      list[0] = buf.slice(n);
-    } else if (n === list[0].length) {
-      // first list is a perfect match
-      ret = list.shift();
-    } else {
-      // complex case.
-      // we have enough to cover it, but it spans past the first buffer.
-      if (stringMode) ret = '';else ret = bufferShim.allocUnsafe(n);
-
-      var c = 0;
-      for (var i = 0, l = list.length; i < l && c < n; i++) {
-        var _buf = list[0];
-        var cpy = Math.min(n - c, _buf.length);
-
-        if (stringMode) ret += _buf.slice(0, cpy);else _buf.copy(ret, c, 0, cpy);
-
-        if (cpy < _buf.length) list[0] = _buf.slice(cpy);else list.shift();
-
-        c += cpy;
-      }
-    }
+    // read part of list
+    ret = fromListPartial(n, state.buffer, state.decoder);
   }
 
+  return ret;
+}
+
+// Extracts only enough buffered data to satisfy the amount requested.
+// This function is designed to be inlinable, so please take care when making
+// changes to the function body.
+function fromListPartial(n, list, hasStrings) {
+  var ret;
+  if (n < list.head.data.length) {
+    // slice is the same for buffers and strings
+    ret = list.head.data.slice(0, n);
+    list.head.data = list.head.data.slice(n);
+  } else if (n === list.head.data.length) {
+    // first chunk is a perfect match
+    ret = list.shift();
+  } else {
+    // result spans more than one buffer
+    ret = hasStrings ? copyFromBufferString(n, list) : copyFromBuffer(n, list);
+  }
+  return ret;
+}
+
+// Copies a specified amount of characters from the list of buffered data
+// chunks.
+// This function is designed to be inlinable, so please take care when making
+// changes to the function body.
+function copyFromBufferString(n, list) {
+  var p = list.head;
+  var c = 1;
+  var ret = p.data;
+  n -= ret.length;
+  while (p = p.next) {
+    var str = p.data;
+    var nb = n > str.length ? str.length : n;
+    if (nb === str.length) ret += str;else ret += str.slice(0, n);
+    n -= nb;
+    if (n === 0) {
+      if (nb === str.length) {
+        ++c;
+        if (p.next) list.head = p.next;else list.head = list.tail = null;
+      } else {
+        list.head = p;
+        p.data = str.slice(nb);
+      }
+      break;
+    }
+    ++c;
+  }
+  list.length -= c;
+  return ret;
+}
+
+// Copies a specified amount of bytes from the list of buffered data chunks.
+// This function is designed to be inlinable, so please take care when making
+// changes to the function body.
+function copyFromBuffer(n, list) {
+  var ret = bufferShim.allocUnsafe(n);
+  var p = list.head;
+  var c = 1;
+  p.data.copy(ret);
+  n -= p.data.length;
+  while (p = p.next) {
+    var buf = p.data;
+    var nb = n > buf.length ? buf.length : n;
+    buf.copy(ret, ret.length - n, 0, nb);
+    n -= nb;
+    if (n === 0) {
+      if (nb === buf.length) {
+        ++c;
+        if (p.next) list.head = p.next;else list.head = list.tail = null;
+      } else {
+        list.head = p;
+        p.data = buf.slice(nb);
+      }
+      break;
+    }
+    ++c;
+  }
+  list.length -= c;
   return ret;
 }
 
@@ -13851,7 +14204,7 @@ function indexOf(xs, x) {
   return -1;
 }
 }).call(this,require('_process'))
-},{"./_stream_duplex":90,"_process":88,"buffer":5,"buffer-shims":4,"core-util-is":6,"events":52,"inherits":54,"isarray":56,"process-nextick-args":87,"string_decoder/":112,"util":2}],93:[function(require,module,exports){
+},{"./_stream_duplex":92,"./internal/streams/BufferList":97,"_process":90,"buffer":5,"buffer-shims":4,"core-util-is":6,"events":53,"inherits":55,"isarray":57,"process-nextick-args":89,"string_decoder/":115,"util":2}],95:[function(require,module,exports){
 // a transform stream is a readable/writable stream where you do
 // something with the data.  Sometimes it's called a "filter",
 // but that's not a great name for it, since that implies a thing where
@@ -13948,7 +14301,6 @@ function Transform(options) {
 
   this._transformState = new TransformState(this);
 
-  // when the writable side finishes, then flush out anything remaining.
   var stream = this;
 
   // start out asking for a readable event once data is transformed.
@@ -13965,9 +14317,10 @@ function Transform(options) {
     if (typeof options.flush === 'function') this._flush = options.flush;
   }
 
+  // When the writable side finishes, then flush out anything remaining.
   this.once('prefinish', function () {
-    if (typeof this._flush === 'function') this._flush(function (er) {
-      done(stream, er);
+    if (typeof this._flush === 'function') this._flush(function (er, data) {
+      done(stream, er, data);
     });else done(stream);
   });
 }
@@ -13988,7 +14341,7 @@ Transform.prototype.push = function (chunk, encoding) {
 // an error, then that'll put the hurt on the whole operation.  If you
 // never call cb(), then you'll never get another chunk.
 Transform.prototype._transform = function (chunk, encoding, cb) {
-  throw new Error('Not implemented');
+  throw new Error('_transform() is not implemented');
 };
 
 Transform.prototype._write = function (chunk, encoding, cb) {
@@ -14018,8 +14371,10 @@ Transform.prototype._read = function (n) {
   }
 };
 
-function done(stream, er) {
+function done(stream, er, data) {
   if (er) return stream.emit('error', er);
+
+  if (data !== null && data !== undefined) stream.push(data);
 
   // if there's nothing in the write buffer, then that means
   // that nothing more will ever be provided
@@ -14032,7 +14387,7 @@ function done(stream, er) {
 
   return stream.push(null);
 }
-},{"./_stream_duplex":90,"core-util-is":6,"inherits":54}],94:[function(require,module,exports){
+},{"./_stream_duplex":92,"core-util-is":6,"inherits":55}],96:[function(require,module,exports){
 (function (process){
 // A bit simpler than readable streams.
 // Implement an async ._write(chunk, encoding, cb), and it'll handle all
@@ -14048,6 +14403,10 @@ var processNextTick = require('process-nextick-args');
 
 /*<replacement>*/
 var asyncWrite = !process.browser && ['v0.10', 'v0.9.'].indexOf(process.version.slice(0, 5)) > -1 ? setImmediate : processNextTick;
+/*</replacement>*/
+
+/*<replacement>*/
+var Duplex;
 /*</replacement>*/
 
 Writable.WritableState = WritableState;
@@ -14090,7 +14449,6 @@ function WriteReq(chunk, encoding, cb) {
   this.next = null;
 }
 
-var Duplex;
 function WritableState(options, stream) {
   Duplex = Duplex || require('./_stream_duplex');
 
@@ -14112,6 +14470,7 @@ function WritableState(options, stream) {
   // cast to ints.
   this.highWaterMark = ~ ~this.highWaterMark;
 
+  // drain event flag.
   this.needDrain = false;
   // at the start of calling end()
   this.ending = false;
@@ -14186,7 +14545,7 @@ function WritableState(options, stream) {
   this.corkedRequestsFree = new CorkedRequest(this);
 }
 
-WritableState.prototype.getBuffer = function writableStateGetBuffer() {
+WritableState.prototype.getBuffer = function getBuffer() {
   var current = this.bufferedRequest;
   var out = [];
   while (current) {
@@ -14206,13 +14565,37 @@ WritableState.prototype.getBuffer = function writableStateGetBuffer() {
   } catch (_) {}
 })();
 
-var Duplex;
+// Test _writableState for inheritance to account for Duplex streams,
+// whose prototype chain only points to Readable.
+var realHasInstance;
+if (typeof Symbol === 'function' && Symbol.hasInstance && typeof Function.prototype[Symbol.hasInstance] === 'function') {
+  realHasInstance = Function.prototype[Symbol.hasInstance];
+  Object.defineProperty(Writable, Symbol.hasInstance, {
+    value: function (object) {
+      if (realHasInstance.call(this, object)) return true;
+
+      return object && object._writableState instanceof WritableState;
+    }
+  });
+} else {
+  realHasInstance = function (object) {
+    return object instanceof this;
+  };
+}
+
 function Writable(options) {
   Duplex = Duplex || require('./_stream_duplex');
 
-  // Writable ctor is applied to Duplexes, though they're not
-  // instanceof Writable, they're instanceof Readable.
-  if (!(this instanceof Writable) && !(this instanceof Duplex)) return new Writable(options);
+  // Writable ctor is applied to Duplexes, too.
+  // `realHasInstance` is necessary because using plain `instanceof`
+  // would return false, as no `_writableState` property is attached.
+
+  // Trying to use the custom `instanceof` for Writable here will also break the
+  // Node.js LazyTransform implementation, which has a non-trivial getter for
+  // `_writableState` that would lead to infinite recursion.
+  if (!realHasInstance.call(Writable, this) && !(this instanceof Duplex)) {
+    return new Writable(options);
+  }
 
   this._writableState = new WritableState(options, this);
 
@@ -14472,7 +14855,7 @@ function clearBuffer(stream, state) {
 }
 
 Writable.prototype._write = function (chunk, encoding, cb) {
-  cb(new Error('not implemented'));
+  cb(new Error('_write() is not implemented'));
 };
 
 Writable.prototype._writev = null;
@@ -14561,10 +14944,75 @@ function CorkedRequest(state) {
   };
 }
 }).call(this,require('_process'))
-},{"./_stream_duplex":90,"_process":88,"buffer":5,"buffer-shims":4,"core-util-is":6,"events":52,"inherits":54,"process-nextick-args":87,"util-deprecate":162}],95:[function(require,module,exports){
+},{"./_stream_duplex":92,"_process":90,"buffer":5,"buffer-shims":4,"core-util-is":6,"events":53,"inherits":55,"process-nextick-args":89,"util-deprecate":168}],97:[function(require,module,exports){
+'use strict';
+
+var Buffer = require('buffer').Buffer;
+/*<replacement>*/
+var bufferShim = require('buffer-shims');
+/*</replacement>*/
+
+module.exports = BufferList;
+
+function BufferList() {
+  this.head = null;
+  this.tail = null;
+  this.length = 0;
+}
+
+BufferList.prototype.push = function (v) {
+  var entry = { data: v, next: null };
+  if (this.length > 0) this.tail.next = entry;else this.head = entry;
+  this.tail = entry;
+  ++this.length;
+};
+
+BufferList.prototype.unshift = function (v) {
+  var entry = { data: v, next: this.head };
+  if (this.length === 0) this.tail = entry;
+  this.head = entry;
+  ++this.length;
+};
+
+BufferList.prototype.shift = function () {
+  if (this.length === 0) return;
+  var ret = this.head.data;
+  if (this.length === 1) this.head = this.tail = null;else this.head = this.head.next;
+  --this.length;
+  return ret;
+};
+
+BufferList.prototype.clear = function () {
+  this.head = this.tail = null;
+  this.length = 0;
+};
+
+BufferList.prototype.join = function (s) {
+  if (this.length === 0) return '';
+  var p = this.head;
+  var ret = '' + p.data;
+  while (p = p.next) {
+    ret += s + p.data;
+  }return ret;
+};
+
+BufferList.prototype.concat = function (n) {
+  if (this.length === 0) return bufferShim.alloc(0);
+  if (this.length === 1) return this.head.data;
+  var ret = bufferShim.allocUnsafe(n >>> 0);
+  var p = this.head;
+  var i = 0;
+  while (p) {
+    p.data.copy(ret, i);
+    i += p.data.length;
+    p = p.next;
+  }
+  return ret;
+};
+},{"buffer":5,"buffer-shims":4}],98:[function(require,module,exports){
 module.exports = require("./lib/_stream_passthrough.js")
 
-},{"./lib/_stream_passthrough.js":91}],96:[function(require,module,exports){
+},{"./lib/_stream_passthrough.js":93}],99:[function(require,module,exports){
 (function (process){
 var Stream = (function (){
   try {
@@ -14584,13 +15032,13 @@ if (!process.browser && process.env.READABLE_STREAM === 'disable' && Stream) {
 }
 
 }).call(this,require('_process'))
-},{"./lib/_stream_duplex.js":90,"./lib/_stream_passthrough.js":91,"./lib/_stream_readable.js":92,"./lib/_stream_transform.js":93,"./lib/_stream_writable.js":94,"_process":88}],97:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":92,"./lib/_stream_passthrough.js":93,"./lib/_stream_readable.js":94,"./lib/_stream_transform.js":95,"./lib/_stream_writable.js":96,"_process":90}],100:[function(require,module,exports){
 module.exports = require("./lib/_stream_transform.js")
 
-},{"./lib/_stream_transform.js":93}],98:[function(require,module,exports){
+},{"./lib/_stream_transform.js":95}],101:[function(require,module,exports){
 module.exports = require("./lib/_stream_writable.js")
 
-},{"./lib/_stream_writable.js":94}],99:[function(require,module,exports){
+},{"./lib/_stream_writable.js":96}],102:[function(require,module,exports){
 (function (Buffer){
 ;(function (sax) { // wrapper for non-node envs
   sax.parser = function (strict, opt) { return new SAXParser(strict, opt) }
@@ -14861,8 +15309,6 @@ module.exports = require("./lib/_stream_writable.js")
 
   // this really needs to be replaced with character classes.
   // XML allows all manner of ridiculous numbers and digits.
-  var number = '0124356789'
-  var letter = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
   // (Letter | "_" | ":")
   var quote = '\'"'
@@ -14875,8 +15321,6 @@ module.exports = require("./lib/_stream_writable.js")
 
   // turn all the string character sets into character class objects.
   whitespace = charClass(whitespace)
-  number = charClass(number)
-  letter = charClass(letter)
 
   // http://www.w3.org/TR/REC-xml/#NT-NameStartChar
   // This implementation works on strings, a single character at a time
@@ -14886,10 +15330,10 @@ module.exports = require("./lib/_stream_writable.js")
   // is left as an exercise for the reader.
   var nameStart = /[:_A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u02FF\u0370-\u037D\u037F-\u1FFF\u200C-\u200D\u2070-\u218F\u2C00-\u2FEF\u3001-\uD7FF\uF900-\uFDCF\uFDF0-\uFFFD]/
 
-  var nameBody = /[:_A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u02FF\u0370-\u037D\u037F-\u1FFF\u200C-\u200D\u2070-\u218F\u2C00-\u2FEF\u3001-\uD7FF\uF900-\uFDCF\uFDF0-\uFFFD\u00B7\u0300-\u036F\u203F-\u2040\.\d-]/
+  var nameBody = /[:_A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u02FF\u0370-\u037D\u037F-\u1FFF\u200C-\u200D\u2070-\u218F\u2C00-\u2FEF\u3001-\uD7FF\uF900-\uFDCF\uFDF0-\uFFFD\u00B7\u0300-\u036F\u203F-\u2040.\d-]/
 
   var entityStart = /[#:_A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u02FF\u0370-\u037D\u037F-\u1FFF\u200C-\u200D\u2070-\u218F\u2C00-\u2FEF\u3001-\uD7FF\uF900-\uFDCF\uFDF0-\uFFFD]/
-  var entityBody = /[#:_A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u02FF\u0370-\u037D\u037F-\u1FFF\u200C-\u200D\u2070-\u218F\u2C00-\u2FEF\u3001-\uD7FF\uF900-\uFDCF\uFDF0-\uFFFD\u00B7\u0300-\u036F\u203F-\u2040\.\d-]/
+  var entityBody = /[#:_A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u02FF\u0370-\u037D\u037F-\u1FFF\u200C-\u200D\u2070-\u218F\u2C00-\u2FEF\u3001-\uD7FF\uF900-\uFDCF\uFDF0-\uFFFD\u00B7\u0300-\u036F\u203F-\u2040.\d-]/
 
   quote = charClass(quote)
   attribEnd = charClass(attribEnd)
@@ -14901,12 +15345,16 @@ module.exports = require("./lib/_stream_writable.js")
     }, {})
   }
 
-  function isRegExp (c) {
-    return Object.prototype.toString.call(c) === '[object RegExp]'
+  function isMatch (regex, c) {
+    return regex.test(c)
   }
 
   function is (charclass, c) {
-    return isRegExp(charclass) ? !!c.match(charclass) : charclass[c]
+    return charclass[c]
+  }
+
+  function notMatch (regex, c) {
+    return !isMatch(regex, c)
   }
 
   function not (charclass, c) {
@@ -15592,9 +16040,11 @@ module.exports = require("./lib/_stream_writable.js")
     while (true) {
       c = charAt(chunk, i++)
       parser.c = c
+
       if (!c) {
         break
       }
+
       if (parser.trackPosition) {
         parser.position++
         if (c === '\n') {
@@ -15604,6 +16054,7 @@ module.exports = require("./lib/_stream_writable.js")
           parser.column++
         }
       }
+
       switch (parser.state) {
         case S.BEGIN:
           parser.state = S.BEGIN_WHITESPACE
@@ -15674,7 +16125,7 @@ module.exports = require("./lib/_stream_writable.js")
             parser.sgmlDecl = ''
           } else if (is(whitespace, c)) {
             // wait for it...
-          } else if (is(nameStart, c)) {
+          } else if (isMatch(nameStart, c)) {
             parser.state = S.OPEN_TAG
             parser.tagName = c
           } else if (c === '/') {
@@ -15877,7 +16328,7 @@ module.exports = require("./lib/_stream_writable.js")
           continue
 
         case S.OPEN_TAG:
-          if (is(nameBody, c)) {
+          if (isMatch(nameBody, c)) {
             parser.tagName += c
           } else {
             newTag(parser)
@@ -15912,7 +16363,7 @@ module.exports = require("./lib/_stream_writable.js")
             openTag(parser)
           } else if (c === '/') {
             parser.state = S.OPEN_TAG_SLASH
-          } else if (is(nameStart, c)) {
+          } else if (isMatch(nameStart, c)) {
             parser.attribName = c
             parser.attribValue = ''
             parser.state = S.ATTRIB_NAME
@@ -15931,7 +16382,7 @@ module.exports = require("./lib/_stream_writable.js")
             openTag(parser)
           } else if (is(whitespace, c)) {
             parser.state = S.ATTRIB_NAME_SAW_WHITE
-          } else if (is(nameBody, c)) {
+          } else if (isMatch(nameBody, c)) {
             parser.attribName += c
           } else {
             strictFail(parser, 'Invalid attribute name')
@@ -15954,7 +16405,7 @@ module.exports = require("./lib/_stream_writable.js")
             parser.attribName = ''
             if (c === '>') {
               openTag(parser)
-            } else if (is(nameStart, c)) {
+            } else if (isMatch(nameStart, c)) {
               parser.attribName = c
               parser.state = S.ATTRIB_NAME
             } else {
@@ -15998,7 +16449,7 @@ module.exports = require("./lib/_stream_writable.js")
             openTag(parser)
           } else if (c === '/') {
             parser.state = S.OPEN_TAG_SLASH
-          } else if (is(nameStart, c)) {
+          } else if (isMatch(nameStart, c)) {
             strictFail(parser, 'No whitespace between attributes')
             parser.attribName = c
             parser.attribValue = ''
@@ -16029,7 +16480,7 @@ module.exports = require("./lib/_stream_writable.js")
           if (!parser.tagName) {
             if (is(whitespace, c)) {
               continue
-            } else if (not(nameStart, c)) {
+            } else if (notMatch(nameStart, c)) {
               if (parser.script) {
                 parser.script += '</' + c
                 parser.state = S.SCRIPT
@@ -16041,7 +16492,7 @@ module.exports = require("./lib/_stream_writable.js")
             }
           } else if (c === '>') {
             closeTag(parser)
-          } else if (is(nameBody, c)) {
+          } else if (isMatch(nameBody, c)) {
             parser.tagName += c
           } else if (parser.script) {
             parser.script += '</' + parser.tagName
@@ -16092,7 +16543,7 @@ module.exports = require("./lib/_stream_writable.js")
             parser[buffer] += parseEntity(parser)
             parser.entity = ''
             parser.state = returnState
-          } else if (is(parser.entity.length ? entityBody : entityStart, c)) {
+          } else if (isMatch(parser.entity.length ? entityBody : entityStart, c)) {
             parser.entity += c
           } else {
             strictFail(parser, 'Invalid character in entity name')
@@ -16115,6 +16566,7 @@ module.exports = require("./lib/_stream_writable.js")
   }
 
   /*! http://mths.be/fromcodepoint v0.1.0 by @mathias */
+  /* istanbul ignore next */
   if (!String.fromCodePoint) {
     (function () {
       var stringFromCharCode = String.fromCharCode
@@ -16156,6 +16608,7 @@ module.exports = require("./lib/_stream_writable.js")
         }
         return result
       }
+      /* istanbul ignore next */
       if (Object.defineProperty) {
         Object.defineProperty(String, 'fromCodePoint', {
           value: fromCodePoint,
@@ -16170,7 +16623,7 @@ module.exports = require("./lib/_stream_writable.js")
 })(typeof exports === 'undefined' ? this.sax = {} : exports)
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":5,"stream":111,"string_decoder":112}],100:[function(require,module,exports){
+},{"buffer":5,"stream":114,"string_decoder":115}],103:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -16276,7 +16729,7 @@ ArraySet.prototype.toArray = function ArraySet_toArray() {
 
 exports.ArraySet = ArraySet;
 
-},{"./util":109}],101:[function(require,module,exports){
+},{"./util":112}],104:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -16418,7 +16871,7 @@ exports.decode = function base64VLQ_decode(aStr, aIndex, aOutParam) {
   aOutParam.rest = aIndex;
 };
 
-},{"./base64":102}],102:[function(require,module,exports){
+},{"./base64":105}],105:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -16487,7 +16940,7 @@ exports.decode = function (charCode) {
   return -1;
 };
 
-},{}],103:[function(require,module,exports){
+},{}],106:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -16600,7 +17053,7 @@ exports.search = function search(aNeedle, aHaystack, aCompare, aBias) {
   return index;
 };
 
-},{}],104:[function(require,module,exports){
+},{}],107:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2014 Mozilla Foundation and contributors
@@ -16681,7 +17134,7 @@ MappingList.prototype.toArray = function MappingList_toArray() {
 
 exports.MappingList = MappingList;
 
-},{"./util":109}],105:[function(require,module,exports){
+},{"./util":112}],108:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -16797,7 +17250,7 @@ exports.quickSort = function (ary, comparator) {
   doQuickSort(ary, comparator, 0, ary.length - 1);
 };
 
-},{}],106:[function(require,module,exports){
+},{}],109:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -17881,7 +18334,7 @@ IndexedSourceMapConsumer.prototype._parseMappings =
 
 exports.IndexedSourceMapConsumer = IndexedSourceMapConsumer;
 
-},{"./array-set":100,"./base64-vlq":101,"./binary-search":103,"./quick-sort":105,"./util":109}],107:[function(require,module,exports){
+},{"./array-set":103,"./base64-vlq":104,"./binary-search":106,"./quick-sort":108,"./util":112}],110:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -18287,7 +18740,7 @@ SourceMapGenerator.prototype.toString =
 
 exports.SourceMapGenerator = SourceMapGenerator;
 
-},{"./array-set":100,"./base64-vlq":101,"./mapping-list":104,"./util":109}],108:[function(require,module,exports){
+},{"./array-set":103,"./base64-vlq":104,"./mapping-list":107,"./util":112}],111:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -18696,7 +19149,7 @@ SourceNode.prototype.toStringWithSourceMap = function SourceNode_toStringWithSou
 
 exports.SourceNode = SourceNode;
 
-},{"./source-map-generator":107,"./util":109}],109:[function(require,module,exports){
+},{"./source-map-generator":110,"./util":112}],112:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -19115,7 +19568,7 @@ function compareByGeneratedPositionsInflated(mappingA, mappingB) {
 }
 exports.compareByGeneratedPositionsInflated = compareByGeneratedPositionsInflated;
 
-},{}],110:[function(require,module,exports){
+},{}],113:[function(require,module,exports){
 /*
  * Copyright 2009-2011 Mozilla Foundation and contributors
  * Licensed under the New BSD license. See LICENSE.txt or:
@@ -19125,7 +19578,7 @@ exports.SourceMapGenerator = require('./lib/source-map-generator').SourceMapGene
 exports.SourceMapConsumer = require('./lib/source-map-consumer').SourceMapConsumer;
 exports.SourceNode = require('./lib/source-node').SourceNode;
 
-},{"./lib/source-map-consumer":106,"./lib/source-map-generator":107,"./lib/source-node":108}],111:[function(require,module,exports){
+},{"./lib/source-map-consumer":109,"./lib/source-map-generator":110,"./lib/source-node":111}],114:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -19254,7 +19707,7 @@ Stream.prototype.pipe = function(dest, options) {
   return dest;
 };
 
-},{"events":52,"inherits":54,"readable-stream/duplex.js":89,"readable-stream/passthrough.js":95,"readable-stream/readable.js":96,"readable-stream/transform.js":97,"readable-stream/writable.js":98}],112:[function(require,module,exports){
+},{"events":53,"inherits":55,"readable-stream/duplex.js":91,"readable-stream/passthrough.js":98,"readable-stream/readable.js":99,"readable-stream/transform.js":100,"readable-stream/writable.js":101}],115:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -19477,7 +19930,7 @@ function base64DetectIncompleteChar(buffer) {
   this.charLength = this.charReceived ? 3 : 0;
 }
 
-},{"buffer":5}],113:[function(require,module,exports){
+},{"buffer":5}],116:[function(require,module,exports){
 'use strict';
 
 /**
@@ -19559,7 +20012,7 @@ SVGO.prototype.createContentItem = function(data) {
 
 };
 
-},{"./svgo/config.js":114,"./svgo/js2svg.js":115,"./svgo/jsAPI.js":116,"./svgo/plugins.js":117,"./svgo/svg2js.js":118}],114:[function(require,module,exports){
+},{"./svgo/config.js":117,"./svgo/js2svg.js":118,"./svgo/jsAPI.js":119,"./svgo/plugins.js":120,"./svgo/svg2js.js":121}],117:[function(require,module,exports){
 (function (__dirname){
 'use strict';
 
@@ -19775,10 +20228,11 @@ function optimizePluginsArray(plugins) {
 }
 
 }).call(this,"/node_modules/svgo/lib/svgo")
-},{"fs":3,"js-yaml":57,"whet.extend":163}],115:[function(require,module,exports){
+},{"fs":3,"js-yaml":58,"whet.extend":169}],118:[function(require,module,exports){
 'use strict';
 
-var EXTEND = require('whet.extend'),
+var EOL = require('os').EOL,
+    EXTEND = require('whet.extend'),
     textElem = require('../../plugins/_collections.js').elemsGroups.textContent.concat('title');
 
 var defaults = {
@@ -19847,14 +20301,14 @@ function JS2SVG(config) {
     }
 
     if (this.config.pretty) {
-        this.config.doctypeEnd += '\n';
-        this.config.procInstEnd += '\n';
-        this.config.commentEnd += '\n';
-        this.config.cdataEnd += '\n';
-        this.config.tagShortEnd += '\n';
-        this.config.tagOpenEnd += '\n';
-        this.config.tagCloseEnd += '\n';
-        this.config.textEnd += '\n';
+        this.config.doctypeEnd += EOL;
+        this.config.procInstEnd += EOL;
+        this.config.commentEnd += EOL;
+        this.config.cdataEnd += EOL;
+        this.config.tagShortEnd += EOL;
+        this.config.tagOpenEnd += EOL;
+        this.config.tagCloseEnd += EOL;
+        this.config.textEnd += EOL;
     }
 
     this.indentLevel = 0;
@@ -20060,7 +20514,7 @@ JS2SVG.prototype.createElem = function(data) {
 
         if (this.textContext == data) {
             this.textContext = null;
-            if (this.config.pretty) dataEnd = '\n';
+            if (this.config.pretty) dataEnd = EOL;
         }
 
         return  openIndent +
@@ -20093,11 +20547,18 @@ JS2SVG.prototype.createAttrs = function(elem) {
 
     elem.eachAttr(function(attr) {
 
-        attrs +=    ' ' +
-                    attr.name +
-                    this.config.attrStart +
-                    String(attr.value).replace(this.config.regValEntities, this.config.encodeEntity) +
-                    this.config.attrEnd;
+        if (attr.value !== undefined) {
+            attrs +=    ' ' +
+                        attr.name +
+                        this.config.attrStart +
+                        String(attr.value).replace(this.config.regValEntities, this.config.encodeEntity) +
+                        this.config.attrEnd;
+        }
+        else {
+            attrs +=    ' ' +
+                        attr.name;
+        }
+
 
     }, this);
 
@@ -20121,7 +20582,7 @@ JS2SVG.prototype.createText = function(text) {
 
 };
 
-},{"../../plugins/_collections.js":120,"whet.extend":163}],116:[function(require,module,exports){
+},{"../../plugins/_collections.js":123,"os":88,"whet.extend":169}],119:[function(require,module,exports){
 'use strict';
 
 var EXTEND = require('whet.extend');
@@ -20372,7 +20833,6 @@ JSAPI.prototype.renameElem = function(name) {
     attr = attr || {};
 
     if (attr.name === undefined ||
-        attr.value === undefined ||
         attr.prefix === undefined ||
         attr.local === undefined
     ) return false;
@@ -20422,7 +20882,7 @@ JSAPI.prototype.renameElem = function(name) {
 
 };
 
-},{"whet.extend":163}],117:[function(require,module,exports){
+},{"whet.extend":169}],120:[function(require,module,exports){
 'use strict';
 
 /**
@@ -20522,7 +20982,7 @@ function full(data, plugins) {
 
 }
 
-},{}],118:[function(require,module,exports){
+},{}],121:[function(require,module,exports){
 'use strict';
 
 var SAX = require('sax'),
@@ -20711,7 +21171,7 @@ module.exports = function(data, callback) {
 
 };
 
-},{"./jsAPI.js":116,"sax":99}],119:[function(require,module,exports){
+},{"./jsAPI.js":119,"sax":102}],122:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -20818,7 +21278,7 @@ exports.cleanupOutData = function(data, params) {
         if (
             params.negativeExtraSpace &&
             (item < 0 ||
-                (/^\./.test(item) && prev % 1 !== 0)
+                (String(item).charCodeAt(0) == 46 && prev % 1 !== 0)
             )
         ) {
             delimiter = '';
@@ -20849,19 +21309,20 @@ exports.cleanupOutData = function(data, params) {
  * @return {String} output number as string
  */
 var removeLeadingZero = exports.removeLeadingZero = function(num) {
+    var strNum = num.toString();
 
-    if (num > 0 && num < 1) {
-        num = ('' + num).slice(1);
-    } else if (num < 0 && num > -1) {
-        num = '-' + ('' + num).slice(2);
+    if (0 < num && num < 1 && strNum.charCodeAt(0) == 48) {
+        strNum = strNum.slice(1);
+    } else if (-1 < num && num < 0 && strNum.charCodeAt(1) == 48) {
+        strNum = strNum.charAt(0) + strNum.slice(2);
     }
 
-    return num;
+    return strNum;
 
 };
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":5}],120:[function(require,module,exports){
+},{"buffer":5}],123:[function(require,module,exports){
 'use strict';
 
 // http://www.w3.org/TR/SVG/intro.html#Definitions
@@ -22779,7 +23240,7 @@ exports.elems = {
             'offset',
             'path'
         ],
-        contentGroups: [
+        content: [
             'animate',
             'animateColor',
             'set'
@@ -23392,7 +23853,7 @@ exports.colorsProps = [
     'color', 'fill', 'stroke', 'stop-color', 'flood-color', 'lighting-color'
 ];
 
-},{}],121:[function(require,module,exports){
+},{}],124:[function(require,module,exports){
 /* global a2c */
 'use strict';
 
@@ -24356,7 +24817,7 @@ function a2c(x1, y1, rx, ry, angle, large_arc_flag, sweep_flag, x2, y2, recursiv
 }
 // jshint ignore: end
 
-},{"../lib/svgo/tools":119,"./_collections.js":120,"./_transforms":122}],122:[function(require,module,exports){
+},{"../lib/svgo/tools":122,"./_collections.js":123,"./_transforms":125}],125:[function(require,module,exports){
 'use strict';
 
 var regTransformTypes = /matrix|translate|scale|rotate|skewX|skewY/,
@@ -24666,7 +25127,66 @@ function multiplyTransformMatrices(a, b) {
 
 }
 
-},{}],123:[function(require,module,exports){
+},{}],126:[function(require,module,exports){
+'use strict';
+
+exports.type = 'full';
+
+exports.active = false;
+
+exports.description = 'adds attributes to an outer <svg> element';
+
+var ENOCLS = 'Error in plugin "addAttributesToSVGElement": absent parameters.\n\
+It should have a list of classes in "attributes" or one "attribute".\n\
+Config example:\n\n\
+\
+plugins:\n\
+- addAttributesToSVGElement:\n\
+    attribute: "mySvg"\n\n\
+\
+plugins:\n\
+- addAttributesToSVGElement:\n\
+    attributes: ["mySvg", "size-big"]\n';
+
+/**
+ * Add attributes to an outer <svg> element. Example config:
+ *
+ * plugins:
+ * - addAttributesToSVGElement:
+ *     attribute: 'data-icon'
+ *
+ * plugins:
+ * - addAttributesToSVGElement:
+ *     attributes: ['data-icon', 'data-disabled']
+ *
+ * @author April Arcus
+ */
+exports.fn = function(data, params) {
+    if (!params || !(Array.isArray(params.attributes) && params.attributes.some(String) || params.attribute)) {
+        console.error(ENOCLS);
+        return data;
+    }
+
+    var attributes = params.attributes || [ params.attribute ],
+        svg = data.content[0];
+
+    if (svg.isElem('svg')) {
+        attributes.forEach(function (attribute) {
+            if (!svg.hasAttr(attribute)) {
+                svg.addAttr({
+                    name: attribute,
+                    prefix: '',
+                    local: attribute
+                });
+            }
+        });
+    }
+
+    return data;
+
+};
+
+},{}],127:[function(require,module,exports){
 'use strict';
 
 exports.type = 'full';
@@ -24711,11 +25231,13 @@ exports.fn = function(data, params) {
 
     if (svg.isElem('svg')) {
         if (svg.hasAttr('class')) {
-            svg.attr('class').value =
-                svg.attr('class').value
-                    .split(' ')
-                    .concat(classNames)
-                    .join(' ');
+            var classes = svg.attr('class').value.split(' ');
+            classNames.forEach(function(className){
+                if (classes.indexOf(className) < 0) {
+                    classes.push(className);
+                }
+            });
+            svg.attr('class').value = classes.join(' ');
         } else {
             svg.addAttr({
                 name: 'class',
@@ -24730,7 +25252,7 @@ exports.fn = function(data, params) {
 
 };
 
-},{}],124:[function(require,module,exports){
+},{}],128:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -24745,8 +25267,8 @@ exports.params = {
     spaces: true
 };
 
-var regNewlinesNeedSpace = /(\S)\n(\S)/g,
-    regNewlines = /\n/g,
+var regNewlinesNeedSpace = /(\S)\r?\n(\S)/g,
+    regNewlines = /\r?\n/g,
     regSpaces = /\s{2,}/g;
 
 /**
@@ -24788,7 +25310,7 @@ exports.fn = function(item, params) {
 
 };
 
-},{}],125:[function(require,module,exports){
+},{}],129:[function(require,module,exports){
 'use strict';
 
 exports.type = 'full';
@@ -24874,7 +25396,7 @@ exports.fn = function(data) {
         });
 };
 
-},{}],126:[function(require,module,exports){
+},{}],130:[function(require,module,exports){
 'use strict';
 
 exports.type = 'full';
@@ -24998,27 +25520,27 @@ exports.fn = function(data, params) {
         return data;
     }
 
+    var idKey;
     for (var k in referencesIDs) {
         if (IDs[k]) {
-
+            idKey = k;
+            k = k.replace(idPrefix, '');
             // replace referenced IDs with the minified ones
             if (params.minify) {
-
                 currentIDstring = getIDstring(currentID = generateID(currentID), params);
-                IDs[k].attr('id').value = currentIDstring;
+                IDs[idKey].attr('id').value = currentIDstring;
 
-                referencesIDs[k].forEach(function(attr) {
-                    k = k.replace(idPrefix, '');
+                referencesIDs[idKey].forEach(function(attr) {
                     attr.value = attr.value
                         .replace('#' + k, '#' + currentIDstring)
                         .replace(k + '.', currentIDstring + '.');
                 });
 
+                idKey = idPrefix + k;
             }
 
             // don't remove referenced IDs
-            delete IDs[idPrefix + k];
-
+            delete IDs[idKey];
         }
     }
 
@@ -25084,7 +25606,7 @@ function getIDstring(arr, params) {
 
 }
 
-},{"./_collections":120}],127:[function(require,module,exports){
+},{"./_collections":123}],131:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -25227,7 +25749,7 @@ exports.fn = function(item, params) {
 
 };
 
-},{"../lib/svgo/tools":119}],128:[function(require,module,exports){
+},{"../lib/svgo/tools":122}],132:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -25305,7 +25827,7 @@ exports.fn = function(item, params) {
 
 };
 
-},{"../lib/svgo/tools":119}],129:[function(require,module,exports){
+},{"../lib/svgo/tools":122}],133:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItemReverse';
@@ -25314,9 +25836,12 @@ exports.active = true;
 
 exports.description = 'collapses useless groups';
 
-var animationElems = require('./_collections').elemsGroups.animation;
+var collections = require('./_collections'),
+    attrsInheritable = collections.inheritableAttrs,
+    animationElems = collections.elemsGroups.animation;
 
 function hasAnimatedAttr(item) {
+    /* jshint validthis:true */
     return item.isElem(animationElems) && item.hasAttr('attributeName', this) ||
         !item.isEmpty() && item.content.some(hasAnimatedAttr, this);
 }
@@ -25358,18 +25883,26 @@ exports.fn = function(item) {
                 if (g.hasAttr() && g.content.length === 1) {
                     var inner = g.content[0];
 
-                    if (inner.isElem() && !inner.hasAttr('id') && (
-                        !g.hasAttr('clip-path') ||
-                        inner.isElem('g') && !g.hasAttr('transform') && !inner.hasAttr('transform')
-                    )) {
+                    if (inner.isElem() && !inner.hasAttr('id') &&
+                        !(g.hasAttr('class') && inner.hasAttr('class')) && (
+                            !g.hasAttr('clip-path') && !g.hasAttr('mask') ||
+                            inner.isElem('g') && !g.hasAttr('transform') && !inner.hasAttr('transform')
+                        )
+                    ) {
                         g.eachAttr(function(attr) {
                             if (g.content.some(hasAnimatedAttr, attr.name)) return;
 
                             if (!inner.hasAttr(attr.name)) {
                                 inner.addAttr(attr);
-                            } else if (attr.name == 'transform' || attr.name == 'class') {
+                            } else if (attr.name == 'transform') {
                                 inner.attr(attr.name).value = attr.value + ' ' + inner.attr(attr.name).value;
+                            } else if (
+                                attrsInheritable.indexOf(attr.name) < 0 &&
+                                !inner.hasAttr(attr.name, attr.value)
+                            ) {
+                                return;
                             }
+
                             g.removeAttr(attr.name);
                         });
                     }
@@ -25387,7 +25920,7 @@ exports.fn = function(item) {
 
 };
 
-},{"./_collections":120}],130:[function(require,module,exports){
+},{"./_collections":123}],134:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -25449,8 +25982,17 @@ exports.fn = function(item, params) {
                     match;
 
                 // Convert colors to currentColor
-                if (params.currentColor && (match = !val.match(none))) {
-                    val = 'currentColor';
+                if (params.currentColor) {
+                    if (typeof params.currentColor === 'string') {
+                        match = val === params.currentColor;
+                    } else if (params.currentColor.exec) {
+                        match = params.currentColor.exec(val);
+                    } else {
+                        match = !val.match(none);
+                    }
+                    if (match) {
+                        val = 'currentColor';
+                    }
                 }
 
                 // Convert color name keyword to long hex
@@ -25507,7 +26049,7 @@ function rgb2hex(rgb) {
     return '#' + ('00000' + (rgb[0] << 16 | rgb[1] << 8 | rgb[2]).toString(16)).slice(-6).toUpperCase();
 }
 
-},{"./_collections":120}],131:[function(require,module,exports){
+},{"./_collections":123}],135:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -26466,7 +27008,7 @@ function data2Path(params, pathData) {
     }, '');
 }
 
-},{"../lib/svgo/tools":119,"./_collections.js":120,"./_path.js":121}],132:[function(require,module,exports){
+},{"../lib/svgo/tools":122,"./_collections.js":123,"./_path.js":124}],136:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -26571,7 +27113,7 @@ exports.fn = function(item) {
 
 };
 
-},{}],133:[function(require,module,exports){
+},{}],137:[function(require,module,exports){
 /* jshint quotmark: false */
 'use strict';
 
@@ -26690,7 +27232,7 @@ function g() {
     return '(?:' + Array.prototype.join.call(arguments, '|') + ')';
 }
 
-},{"./_collections":120,"whet.extend":163}],134:[function(require,module,exports){
+},{"./_collections":123,"whet.extend":169}],138:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -27056,7 +27598,7 @@ function smartRound(precision, data) {
     return data;
 }
 
-},{"../lib/svgo/tools":119,"./_transforms.js":122,"whet.extend":163}],135:[function(require,module,exports){
+},{"../lib/svgo/tools":122,"./_transforms.js":125,"whet.extend":169}],139:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -27129,7 +27671,7 @@ exports.fn = function(item, params) {
 
 };
 
-},{"./_path.js":121}],136:[function(require,module,exports){
+},{"./_path.js":124}],140:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -27176,7 +27718,7 @@ exports.fn = function(item, svgoOptions) {
     return item;
 };
 
-},{"csso":42}],137:[function(require,module,exports){
+},{"csso":42}],141:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItemReverse';
@@ -27304,7 +27846,7 @@ function intersectInheritableAttrs(a, b) {
 
 }
 
-},{"./_collections":120,"./_collections.js":120}],138:[function(require,module,exports){
+},{"./_collections":123,"./_collections.js":123}],142:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -27351,10 +27893,16 @@ exports.fn = function(item) {
         })
     ) {
         item.content.forEach(function(inner) {
+            var attr = item.attr('transform');
             if (inner.hasAttr('transform')) {
-                inner.attr('transform').value = item.attr('transform').value + ' ' + inner.attr('transform').value;
+                inner.attr('transform').value = attr.value + ' ' + inner.attr('transform').value;
             } else {
-                inner.addAttr(item.attr('transform'));
+                inner.addAttr({
+                    'name': attr.name,
+                    'local': attr.local,
+                    'prefix': attr.prefix,
+                    'value': attr.value
+                });
             }
         });
 
@@ -27363,7 +27911,7 @@ exports.fn = function(item) {
 
 };
 
-},{"./_collections.js":120}],139:[function(require,module,exports){
+},{"./_collections.js":123}],143:[function(require,module,exports){
 'use strict';
 
 var ELEM_SEP = ':';
@@ -27484,7 +28032,7 @@ exports.fn = function(item, params) {
 
 };
 
-},{}],140:[function(require,module,exports){
+},{}],144:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -27513,7 +28061,7 @@ exports.fn = function(item) {
 
 };
 
-},{}],141:[function(require,module,exports){
+},{}],145:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -27547,7 +28095,7 @@ exports.fn = function(item, params) {
 
 };
 
-},{}],142:[function(require,module,exports){
+},{}],146:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -27581,7 +28129,7 @@ exports.fn = function(item) {
 
 };
 
-},{}],143:[function(require,module,exports){
+},{}],147:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -27623,7 +28171,7 @@ exports.fn = function(item) {
 
 };
 
-},{}],144:[function(require,module,exports){
+},{}],148:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -27690,7 +28238,89 @@ exports.fn = function(item, params) {
 
 };
 
-},{"./_collections":120}],145:[function(require,module,exports){
+},{"./_collections":123}],149:[function(require,module,exports){
+'use strict';
+
+exports.type = 'perItem';
+
+exports.active = false;
+
+exports.description = 'removes arbitrary elements by ID or className (disabled by default)';
+
+exports.params = {
+    id: [],
+    class: []
+};
+
+/**
+ * Remove arbitrary SVG elements by ID or className.
+ *
+ * @param id
+ *   examples:
+ *
+ *     > single: remove element with ID of `elementID`
+ *     ---
+ *     removeElementsByAttr:
+ *       id: 'elementID'
+ *
+ *     > list: remove multiple elements by ID
+ *     ---
+ *     removeElementsByAttr:
+ *       id:
+ *         - 'elementID'
+ *         - 'anotherID'
+ *
+ * @param class
+ *   examples:
+ *
+ *     > single: remove all elements with class of `elementClass`
+ *     ---
+ *     removeElementsByAttr:
+ *       class: 'elementClass'
+ *
+ *     > list: remove all elements with class of `elementClass` or `anotherClass`
+ *     ---
+ *     removeElementsByAttr:
+ *       class:
+ *         - 'elementClass'
+ *         - 'anotherClass'
+ *
+ * @param {Object} item current iteration item
+ * @param {Object} params plugin params
+ * @return {Boolean} if false, item will be filtered out
+ *
+ * @author Eli Dupuis (@elidupuis)
+ */
+exports.fn = function(item, params) {
+    var elemId, elemClass;
+
+    // wrap params in an array if not already
+    ['id', 'class'].forEach(function(key) {
+        if (!Array.isArray(params[key])) {
+            params[key] = [ params[key] ];
+        }
+    });
+
+    // abort if current item is no an element
+    if (!item.isElem()) {
+        return;
+    }
+
+    // remove element if it's `id` matches configured `id` params
+    elemId = item.attr('id');
+    if (elemId) {
+        return params.id.indexOf(elemId.value) === -1;
+    }
+
+    // remove element if it's `class` contains any of the configured `class` params
+    elemClass = item.attr('class');
+    if (elemClass) {
+        var hasClassRegex = new RegExp(params.class.join('|'));
+        return !hasClassRegex.test(elemClass.value);
+    }
+};
+
+},{}],150:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -27721,7 +28351,7 @@ exports.fn = function(item) {
 
 };
 
-},{}],146:[function(require,module,exports){
+},{}],151:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItemReverse';
@@ -27755,7 +28385,7 @@ exports.fn = function(item) {
 
 };
 
-},{"./_collections":120}],147:[function(require,module,exports){
+},{"./_collections":123}],152:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -27816,7 +28446,7 @@ exports.fn = function(item, params) {
 
 };
 
-},{}],148:[function(require,module,exports){
+},{}],153:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -28036,7 +28666,7 @@ exports.fn = function(item, params) {
 
 };
 
-},{}],149:[function(require,module,exports){
+},{}],154:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -28061,7 +28691,7 @@ exports.fn = function(item) {
 
 };
 
-},{}],150:[function(require,module,exports){
+},{}],155:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -28103,7 +28733,7 @@ exports.fn = function(item) {
 
 };
 
-},{"./_collections":120}],151:[function(require,module,exports){
+},{"./_collections":123}],156:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -28133,7 +28763,7 @@ exports.fn = function(item) {
 
 };
 
-},{}],152:[function(require,module,exports){
+},{}],157:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -28158,7 +28788,7 @@ exports.fn = function(item) {
 
 };
 
-},{}],153:[function(require,module,exports){
+},{}],158:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -28184,7 +28814,7 @@ exports.fn = function(item) {
 
 };
 
-},{}],154:[function(require,module,exports){
+},{}],159:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -28312,6 +28942,7 @@ exports.fn = function(item, params) {
                         // useless overrides
                         (
                             params.uselessOverrides &&
+                            attr.name !== 'transform' &&
                             attrsInheritable.indexOf(attr.name) > -1 &&
                             item.parentNode.computedAttr(attr.name, attr.value)
                         )
@@ -28328,7 +28959,7 @@ exports.fn = function(item, params) {
 
 };
 
-},{"./_collections":120}],155:[function(require,module,exports){
+},{"./_collections":123}],160:[function(require,module,exports){
 'use strict';
 
 exports.type = 'full';
@@ -28437,7 +29068,7 @@ exports.fn = function(data) {
 
 };
 
-},{}],156:[function(require,module,exports){
+},{}],161:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -28490,7 +29121,7 @@ function getUsefulItems(usefulItems, item) {
     return usefulItems;
 }
 
-},{"./_collections":120}],157:[function(require,module,exports){
+},{"./_collections":123}],162:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -28584,7 +29215,7 @@ exports.fn = function(item, params) {
 
 };
 
-},{"./_collections":120}],158:[function(require,module,exports){
+},{"./_collections":123}],163:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -28635,7 +29266,36 @@ exports.fn = function(item) {
 
 };
 
-},{}],159:[function(require,module,exports){
+},{}],164:[function(require,module,exports){
+'use strict';
+
+exports.type = 'perItem';
+
+exports.active = false;
+
+exports.description = 'removes xmlns attribute (for inline svg, disabled by default)';
+
+/**
+ * Remove the xmlns attribute when present.
+ *
+ * @example
+ * <svg viewBox="0 0 100 50" xmlns="http://www.w3.org/2000/svg">
+ *   ↓
+ * <svg viewBox="0 0 100 50">
+ *
+ * @param {Object} item current iteration item
+ * @return {Boolean} if true, xmlns will be filtered out
+ *
+ * @author Ricardo Tomasi
+ */
+exports.fn = function(item) {
+
+    if (item.isElem('svg') && item.hasAttr('xmlns')) {
+        item.removeAttr('xmlns');
+    }
+
+};
+},{}],165:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -28661,7 +29321,7 @@ exports.fn = function(item) {
 
 };
 
-},{}],160:[function(require,module,exports){
+},{}],166:[function(require,module,exports){
 'use strict';
 
 exports.type = 'perItem';
@@ -28672,14 +29332,12 @@ exports.description = 'sorts element attributes (disabled by default)';
 
 exports.params = {
 	order: [
-		'xmlns',
 		'id',
 		'width', 'height',
 		'x', 'x1', 'x2',
 		'y', 'y1', 'y2',
 		'cx', 'cy', 'r',
-		'fill', 'fill-opacity', 'fill-rule',
-		'stroke', 'stroke-opacity', 'stroke-width', 'stroke-miterlimit', 'stroke-dashoffset',
+		'fill', 'stroke', 'marker',
 		'd', 'points'
 	]
 };
@@ -28705,8 +29363,35 @@ exports.fn = function(item, params) {
 		});
 
 		attrs.sort(function(a, b) {
-			return ((a = params.order.indexOf(a.name)) > -1 ? a : orderlen) -
-				((b = params.order.indexOf(b.name)) > -1 ? b : orderlen);
+			if (a.prefix != b.prefix) {
+				// xmlns attributes implicitly have the prefix xmlns
+				if (a.prefix == 'xmlns')
+					return -1;
+				if (b.prefix == 'xmlns')
+					return 1;
+				return a.prefix < b.prefix ? -1 : 1;
+			}
+
+			var aindex = orderlen;
+			var bindex = orderlen;
+
+			for (var i = 0; i < params.order.length; i++) {
+				if (a.name == params.order[i]) {
+					aindex = i;
+				} else if (a.name.indexOf(params.order[i] + '-') === 0) {
+					aindex = i + .5;
+				}
+				if (b.name == params.order[i]) {
+					bindex = i;
+				} else if (b.name.indexOf(params.order[i] + '-') === 0) {
+					bindex = i + .5;
+				}
+			}
+
+			if (aindex != bindex) {
+				return aindex - bindex;
+			}
+			return a.name < b.name ? -1 : 1;
 		});
 
 		attrs.forEach(function (attr) {
@@ -28719,7 +29404,7 @@ exports.fn = function(item, params) {
 
 };
 
-},{}],161:[function(require,module,exports){
+},{}],167:[function(require,module,exports){
 'use strict';
 
 /*
@@ -29048,7 +29733,7 @@ exports.fn = function(data, params) {
 
 };
 
-},{"./_path.js":121,"whet.extend":163}],162:[function(require,module,exports){
+},{"./_path.js":124,"whet.extend":169}],168:[function(require,module,exports){
 (function (global){
 
 /**
@@ -29119,9 +29804,9 @@ function config (name) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],163:[function(require,module,exports){
+},{}],169:[function(require,module,exports){
 module.exports = require( './lib/whet.extend' );
-},{"./lib/whet.extend":164}],164:[function(require,module,exports){
+},{"./lib/whet.extend":170}],170:[function(require,module,exports){
 // Generated by CoffeeScript 1.3.3
 
 /*
@@ -29227,13 +29912,14 @@ module.exports = require( './lib/whet.extend' );
 
 }).call(this);
 
-},{}],165:[function(require,module,exports){
+},{}],171:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
 var svgo = require('svgo');
+var addAttributesToSVGElement = require('svgo/plugins/addAttributesToSVGElement');
 var addClassesToSVGElement = require('svgo/plugins/addClassesToSVGElement');
 var cleanupAttrs = require('svgo/plugins/cleanupAttrs');
 var cleanupEnableBackground = require('svgo/plugins/cleanupEnableBackground');
@@ -29256,6 +29942,7 @@ var removeDesc = require('svgo/plugins/removeDesc');
 var removeDimensions = require('svgo/plugins/removeDimensions');
 var removeDoctype = require('svgo/plugins/removeDoctype');
 var removeEditorsNSData = require('svgo/plugins/removeEditorsNSData');
+var removeElementsByAttr = require('svgo/plugins/removeElementsByAttr');
 var removeEmptyAttrs = require('svgo/plugins/removeEmptyAttrs');
 var removeEmptyContainers = require('svgo/plugins/removeEmptyContainers');
 var removeEmptyText = require('svgo/plugins/removeEmptyText');
@@ -29270,6 +29957,7 @@ var removeUnusedNS = require('svgo/plugins/removeUnusedNS');
 var removeUselessDefs = require('svgo/plugins/removeUselessDefs');
 var removeUselessStrokeAndFill = require('svgo/plugins/removeUselessStrokeAndFill');
 var removeViewBox = require('svgo/plugins/removeViewBox');
+var removeXMLNS = require('svgo/plugins/removeXMLNS');
 var removeXMLProcInst = require('svgo/plugins/removeXMLProcInst');
 var sortAttrs = require('svgo/plugins/sortAttrs');
 var transformsWithOnePath = require('svgo/plugins/transformsWithOnePath');
@@ -29279,7 +29967,7 @@ var SketchPlugin = exports.SketchPlugin = {
   description: "A Plugin that compresses SVG assets using SVGO, right when you export them. This Plugin *requires* Sketch 3.8.",
   author: "Ale Muñoz",
   authorEmail: "ale@sketchapp.com",
-  version: "1.3.4",
+  version: "1.3.6",
   identifier: "com.sketchapp.plugins.svgo-compressor",
   homepage: "https:/github.com/BohemianCoding/svgo-compressor",
   compatibleVersion: 3.8,
@@ -29303,12 +29991,12 @@ var SketchPlugin = exports.SketchPlugin = {
           // The way to setup SVGO Plugins is a bit convoluted, due to the fact that CocoaScript
           // doesn't really play well with the 'require's used in SVGO. So apologies in advance
           // for the clunky method…
-          //
+          // 
           // So, for every SVGO Plugin you want to use, you'll have to add an object to svgoJSON.plugins,
           // with a 'name' key and a 'params' key (optional, only needed if you want to change any of the default params for a plugin)
-          //
+          // 
           // This is the list of SVGO Plugins available as of 2016-05-26:
-          //
+          // 
           // - addClassesToSVGElement - add classnames to an outer <svg> element
           // - cleanupAttrs - cleanup attributes from newlines, trailing and repeating spaces
           // - cleanUpEnableBackground - remove or cleanup enable-background attribute when possible
@@ -29348,7 +30036,7 @@ var SketchPlugin = exports.SketchPlugin = {
           // - removeXMLProcInst - remove XML processing instructions
           // - sortAttrs - sort element attributes for epic readability
           // - transformsWithOnePath - apply transforms, crop by real width, center vertical alignment and resize SVG with one Path inside
-          //
+          // 
           // These are some sane defaults we've found to work reasonably well, compressing your SVG without
           // altering the shapes or the look. Your milleage may vary, so feel free to tweak these…
           svgoJSON = {
@@ -29384,17 +30072,22 @@ var SketchPlugin = exports.SketchPlugin = {
             var plugin = eval(item.name);
             log('Enabled plugin: ' + item.name);
             plugin.active = true;
-            if (item.params != null) {
-              if (plugin.params == undefined) {
-                plugin.params = {};
-              }
-              for (var attrname in item.params) {
-                plugin.params[attrname] = item.params[attrname];
+            if (plugin.params) {
+              // Plugin supports params
+              log('—› default params: ' + JSON.stringify(plugin.params, null, 2));
+              if (item.params != null) {
+                log('—› new params: ' + JSON.stringify(item.params, null, 2));
+                if (plugin.params == undefined) {
+                  plugin.params = {};
+                }
+                for (var attrname in item.params) {
+                  plugin.params[attrname] = item.params[attrname];
+                }
+                log('—› resulting params: ' + JSON.stringify(plugin.params, null, 2));
               }
             }
             parsedSVGOPlugins.push([plugin]);
           }
-
           var exports = context.actionContext.exports;
           var filesToCompress = [];
           for (var i = 0; i < exports.count(); i++) {
@@ -29451,7 +30144,7 @@ __globals.___svgo_run_handler_ = function (context, params) {
     "description": "A Plugin that compresses SVG assets using SVGO, right when you export them. This Plugin *requires* Sketch 3.8.",
     "author": "Ale Muñoz",
     "authorEmail": "ale@sketchapp.com",
-    "version": "1.3.4",
+    "version": "1.3.6",
     "identifier": "com.sketchapp.plugins.svgo-compressor",
     "homepage": "https:/github.com/BohemianCoding/svgo-compressor",
     "compatibleVersion": 3.8,
@@ -29474,4 +30167,4 @@ __globals.___svgo_run_handler_ = function (context, params) {
 }__$end_of_manifest_
 */
 
-},{"svgo":113,"svgo/plugins/addClassesToSVGElement":123,"svgo/plugins/cleanupAttrs":124,"svgo/plugins/cleanupEnableBackground":125,"svgo/plugins/cleanupIDs":126,"svgo/plugins/cleanupListOfValues":127,"svgo/plugins/cleanupNumericValues":128,"svgo/plugins/collapseGroups":129,"svgo/plugins/convertColors":130,"svgo/plugins/convertPathData":131,"svgo/plugins/convertShapeToPath":132,"svgo/plugins/convertStyleToAttrs":133,"svgo/plugins/convertTransform":134,"svgo/plugins/mergePaths":135,"svgo/plugins/minifyStyles":136,"svgo/plugins/moveElemsAttrsToGroup":137,"svgo/plugins/moveGroupAttrsToElems":138,"svgo/plugins/removeAttrs":139,"svgo/plugins/removeComments":140,"svgo/plugins/removeDesc":141,"svgo/plugins/removeDimensions":142,"svgo/plugins/removeDoctype":143,"svgo/plugins/removeEditorsNSData":144,"svgo/plugins/removeEmptyAttrs":145,"svgo/plugins/removeEmptyContainers":146,"svgo/plugins/removeEmptyText":147,"svgo/plugins/removeHiddenElems":148,"svgo/plugins/removeMetadata":149,"svgo/plugins/removeNonInheritableGroupAttrs":150,"svgo/plugins/removeRasterImages":151,"svgo/plugins/removeStyleElement":152,"svgo/plugins/removeTitle":153,"svgo/plugins/removeUnknownsAndDefaults":154,"svgo/plugins/removeUnusedNS":155,"svgo/plugins/removeUselessDefs":156,"svgo/plugins/removeUselessStrokeAndFill":157,"svgo/plugins/removeViewBox":158,"svgo/plugins/removeXMLProcInst":159,"svgo/plugins/sortAttrs":160,"svgo/plugins/transformsWithOnePath":161}]},{},[165]);
+},{"svgo":116,"svgo/plugins/addAttributesToSVGElement":126,"svgo/plugins/addClassesToSVGElement":127,"svgo/plugins/cleanupAttrs":128,"svgo/plugins/cleanupEnableBackground":129,"svgo/plugins/cleanupIDs":130,"svgo/plugins/cleanupListOfValues":131,"svgo/plugins/cleanupNumericValues":132,"svgo/plugins/collapseGroups":133,"svgo/plugins/convertColors":134,"svgo/plugins/convertPathData":135,"svgo/plugins/convertShapeToPath":136,"svgo/plugins/convertStyleToAttrs":137,"svgo/plugins/convertTransform":138,"svgo/plugins/mergePaths":139,"svgo/plugins/minifyStyles":140,"svgo/plugins/moveElemsAttrsToGroup":141,"svgo/plugins/moveGroupAttrsToElems":142,"svgo/plugins/removeAttrs":143,"svgo/plugins/removeComments":144,"svgo/plugins/removeDesc":145,"svgo/plugins/removeDimensions":146,"svgo/plugins/removeDoctype":147,"svgo/plugins/removeEditorsNSData":148,"svgo/plugins/removeElementsByAttr":149,"svgo/plugins/removeEmptyAttrs":150,"svgo/plugins/removeEmptyContainers":151,"svgo/plugins/removeEmptyText":152,"svgo/plugins/removeHiddenElems":153,"svgo/plugins/removeMetadata":154,"svgo/plugins/removeNonInheritableGroupAttrs":155,"svgo/plugins/removeRasterImages":156,"svgo/plugins/removeStyleElement":157,"svgo/plugins/removeTitle":158,"svgo/plugins/removeUnknownsAndDefaults":159,"svgo/plugins/removeUnusedNS":160,"svgo/plugins/removeUselessDefs":161,"svgo/plugins/removeUselessStrokeAndFill":162,"svgo/plugins/removeViewBox":163,"svgo/plugins/removeXMLNS":164,"svgo/plugins/removeXMLProcInst":165,"svgo/plugins/sortAttrs":166,"svgo/plugins/transformsWithOnePath":167}]},{},[171]);
