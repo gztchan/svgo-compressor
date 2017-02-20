@@ -29997,6 +29997,7 @@ var SketchPlugin = exports.SketchPlugin = {
           // 
           // This is the list of SVGO Plugins available as of 2016-05-26:
           // 
+          // - addAttributesToSVGElement - adds attributes to an outer <svg> element
           // - addClassesToSVGElement - add classnames to an outer <svg> element
           // - cleanupAttrs - cleanup attributes from newlines, trailing and repeating spaces
           // - cleanUpEnableBackground - remove or cleanup enable-background attribute when possible
@@ -30043,7 +30044,7 @@ var SketchPlugin = exports.SketchPlugin = {
             "comment": "This is the settings file for the SVGO Compressor Plugin. For more info, please check <https://github.com/BohemianCoding/svgo-compressor>",
             "pretty": true,
             "indent": 2,
-            "plugins": [{ "name": "cleanupAttrs" }, { "name": "cleanupEnableBackground" }, { "name": "cleanupIDs" }, { "name": "cleanupListOfValues" }, { "name": "cleanupNumericValues" }, { "name": "collapseGroups" }, { "name": "convertStyleToAttrs" }, { "name": "convertTransform" }, { "name": "mergePaths" }, { "name": "minifyStyles" }, { "name": "removeComments" }, { "name": "removeDesc", "params": { "removeAny": true } }, { "name": "removeDoctype" }, { "name": "removeEditorsNSData" }, { "name": "removeEmptyAttrs" }, { "name": "removeEmptyContainers" }, { "name": "removeEmptyText" }, { "name": "removeMetadata" }, { "name": "removeNonInheritableGroupAttrs" }, { "name": "removeTitle" }, { "name": "removeUnknownsAndDefaults" }, { "name": "removeUnusedNS" }, { "name": "removeUselessDefs" }, { "name": "removeUselessStrokeAndFill" }, { "name": "removeXMLProcInst" }, { "name": "sortAttrs" }]
+            "plugins": [{ "name": "cleanupIDs" }, { "name": "cleanupListOfValues" }, { "name": "cleanupNumericValues" }, { "name": "collapseGroups" }, { "name": "convertColors" }, { "name": "convertStyleToAttrs" }, { "name": "convertTransform" }, { "name": "mergePaths" }, { "name": "minifyStyles" }, { "name": "removeComments" }, { "name": "removeDesc", "params": { "removeAny": true } }, { "name": "removeDoctype" }, { "name": "removeEditorsNSData" }, { "name": "removeEmptyAttrs" }, { "name": "removeEmptyContainers" }, { "name": "removeEmptyText" }, { "name": "removeMetadata" }, { "name": "removeNonInheritableGroupAttrs" }, { "name": "removeTitle" }, { "name": "removeUnknownsAndDefaults" }, { "name": "removeUnusedNS" }, { "name": "removeUselessDefs" }, { "name": "removeUselessStrokeAndFill" }, { "name": "removeXMLNS" }, { "name": "removeXMLProcInst" }, { "name": "sortAttrs" }]
           };
           NSString.stringWithString(JSON.stringify(svgoJSON, null, '  ')).writeToFile_atomically_encoding_error(svgoJSONFilePath, true, NSUTF8StringEncoding, nil);
         }
@@ -30071,23 +30072,25 @@ var SketchPlugin = exports.SketchPlugin = {
             var item = svgoJSON.plugins[j];
             var plugin = eval(item.name);
             log('Enabled plugin: ' + item.name);
+            plugin.pluginName = item.name;
             plugin.active = true;
             if (plugin.params) {
               // Plugin supports params
               log('—› default params: ' + JSON.stringify(plugin.params, null, 2));
-              if (item.params != null) {
-                log('—› new params: ' + JSON.stringify(item.params, null, 2));
-                if (plugin.params == undefined) {
-                  plugin.params = {};
-                }
-                for (var attrname in item.params) {
-                  plugin.params[attrname] = item.params[attrname];
-                }
-                log('—› resulting params: ' + JSON.stringify(plugin.params, null, 2));
+            }
+            if (item.params != null) {
+              log('—› new params: ' + JSON.stringify(item.params, null, 2));
+              if (plugin.params == undefined) {
+                plugin.params = {};
               }
+              for (var attrname in item.params) {
+                plugin.params[attrname] = item.params[attrname];
+              }
+              log('—› resulting params: ' + JSON.stringify(plugin.params, null, 2));
             }
             parsedSVGOPlugins.push([plugin]);
           }
+
           var exports = context.actionContext.exports;
           var filesToCompress = [];
           for (var i = 0; i < exports.count(); i++) {
@@ -30118,6 +30121,14 @@ var SketchPlugin = exports.SketchPlugin = {
               var currentFile = filesToCompress[i];
               var svgString = "" + NSString.stringWithContentsOfFile_encoding_error(currentFile, NSUTF8StringEncoding, nil);
               originalTotalSize += svgString.length;
+              for (var pluginIndex = 0; pluginIndex < svgCompressor.config.plugins[0].length; pluginIndex++) {
+                var plugin = svgCompressor.config.plugins[0][pluginIndex];
+                if (plugin.pluginName == "cleanupIDs") {
+                  var prefix = currentFile.lastPathComponent().stringByDeletingPathExtension().replace(/\s+/g, '-').toLowerCase() + "-";
+                  log('Setting cleanupIDs prefix to: ' + prefix);
+                  plugin.params['prefix'] = prefix;
+                }
+              }
               svgCompressor.optimize(svgString, function (result) {
                 compressedTotalSize += result.data.length;
                 NSString.stringWithString(result.data).writeToFile_atomically_encoding_error(currentFile, true, NSUTF8StringEncoding, nil);
