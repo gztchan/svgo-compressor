@@ -97,7 +97,7 @@ into this:
 
 By default, SVGO will change the IDs for paths in `defs`, using minified names (`a`, `b`…), and this may not be ideal for all scenarios (i.e: if you export multiple SVG assets for use on a web page, they'll use the same IDs for paths on different assets).
 
-We work around this issue by adding a prefix for each asset, based on its filename. You can disable this behaviour by setting `minify` to `false` in `svgo.json`:
+We work around this issue by adding a prefix for each asset, based on its filename. I.e: if you're exporting an asset named `icon-star`, its `defs` will be named `icon-star-a`, `icon-star-b`, etc…. You can disable this behaviour by setting `minify` to `false` in `svgo.json`:
 
 ```json
 "plugins": [
