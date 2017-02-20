@@ -22,7 +22,7 @@ If for some reason you’re not happy with the default settings we’ve chosen, 
 ## SVGO Plugins: what they do
 
 
-#### addAttributesToSVGElement
+### addAttributesToSVGElement
 
 Adds attributes to an outer `<svg>` element
 
@@ -30,7 +30,7 @@ What it does:
 
 - nothing, apparently
 
-#### addClassesToSVGElement
+### addClassesToSVGElement
 
 Adds classes to an outer `<svg>` element
 
@@ -39,7 +39,7 @@ What it does:
 - nothing, apparently
 
 
-#### cleanupAttrs
+### cleanupAttrs
 
 Cleanups attributes from newlines, trailing and repeating spaces
 
@@ -47,7 +47,7 @@ What it does:
 
 It removes newlines, trailing and repeating spaces from all attributes in an SVG. Sketch doesn't output extra white space or newlines in SVG attributes, so this plugin is not enabled by default in SVGO Compressor.
 
-#### cleanupEnableBackground
+### cleanupEnableBackground
 
 Remove or cleanup enable-background attr which coincides with a width/height box (see <http://www.w3.org/TR/SVG/filters.html#EnableBackgroundProperty>).
 
@@ -65,7 +65,7 @@ to this:
 
 This is not needed in SVGO Compressor, since Sketch does not output enable-background attributes, so it's not enabled by default.
 
-#### cleanupIDs
+### cleanupIDs
 
 Removes unused IDs in the file, and minifies used IDs (only if there are no `<style>` or `<script>` tags).
 
@@ -110,11 +110,7 @@ We work around this issue by adding a prefix for each asset, based on its filena
 ]
 ```
 
-TODO: send SVGO a pull request to do this on their side, using something like an `autoprefix` param.
-
-TODO: we should do a better job with this in Sketch, since we're basically using `path-X` ourselves, where `X` is a number that starts from 1 for *each* exported asset. We should probably use the path name, or something derived from it.
-
-#### cleanupListOfValues
+### cleanupListOfValues
 
 Rounds list of values to the fixed precision (defaults to 3 decimals) in the following attributes:
 
@@ -154,13 +150,13 @@ It is enabled by default in SVGO Compressor, and we default it to 3 decimals. If
 ]
 ```
 
-#### cleanupNumericValues
+### cleanupNumericValues
 
 Rounds numeric values to the fixed precision, removes default ‘px’ units.
 
 Enabled by default in SVGO Compressor.
 
-#### collapseGroups
+### collapseGroups
 
 Collapses useless groups.
 
@@ -182,7 +178,7 @@ Turns this:
 
 Enabled by default in SVGO Compressor.
 
-#### convertColors
+### convertColors
 
 Converts colors: rgb() to #rrggbb and #rrggbb to #rgb.
 
@@ -198,19 +194,19 @@ It supports the following features:
 - Convert hex to short name (`shortname` param, enabled by default). Converts hex to color name if the color name is shorter than the hex value.
   - `#000080` ➡ `navy`
 
-#### convertPathData
+### convertPathData
 
 Optimizes path data: writes in shorter form, applies transformations.
 
 Since this modifies path data, it's **off by default in SVGO Compressor**.
 
-#### convertShapeToPath
+### convertShapeToPath
 
 Converts basic shapes to more compact path form.
 
 This is turned off in SVGO Compressor, since it will turn your `rect`s and `polygon`s into `path`s, which might not be ideal if you plan on doing SVG animation.
 
-#### convertStyleToAttrs
+### convertStyleToAttrs
 
 Converts style in attributes. Cleanups comments and invalid declarations (without colon) as a side effect.
 
@@ -228,26 +224,26 @@ into this
 
 Enabled by default in SVGO Compressor.
 
-#### convertTransform
+### convertTransform
 
 Converts matrices to the short aliases, converts long translate, scale or rotate transform notations to the shorts ones, converts transforms to the matrices and multiply them all into one, remove useless transforms.
 
 Enabled by default in SVGO Compressor.
 
 
-#### mergePaths
+### mergePaths
 
 Merges multiple Paths into one.
 
 Enabled by default in SVGO Compressor.
 
-#### minifyStyles
+### minifyStyles
 
 Minifies styles (`<style>` element + style attribute)
 
 Enabled by default in SVGO Compressor.
 
-#### moveElemsAttrsToGroup
+### moveElemsAttrsToGroup
 
 Collapses content's intersected and inheritable attributes to the existing group wrapper.
 
@@ -275,7 +271,7 @@ into this
 
 Off by default in SVGO Compressor.
 
-#### moveGroupAttrsToElems
+### moveGroupAttrsToElems
 
 Moves group attrs to the content elements.
 
@@ -299,7 +295,7 @@ into this
 
 Off by default in SVGO Compressor.
 
-#### removeAttrs
+### removeAttrs
 
 Removes the specified attributes in the plugin params.
 
@@ -320,37 +316,37 @@ will remove all the `fill` attributes in the file.
 
 Off by default for obvious reasons in SVGO Compressor.
 
-#### removeComments
+### removeComments
 
 Removes comments in the SVG file. Gets rid of the `<!-- Generator: Sketch 42 (36781) - http://www.bohemiancoding.com/sketch -->` bit.
 
 Enabled by default in SVGO Compressor.
 
-#### removeDesc
+### removeDesc
 
 Removes `<desc>`. Gets rid of the `<desc>Created with Sketch.</desc>` bit.
 
 Enabled by default in SVGO Compressor.
 
-#### removeDimensions
+### removeDimensions
 
 Removes width/height attributes when a viewBox attribute is present.
 
 Off by default in SVGO Compressor, because it sometimes messes with rendering on web pages.
 
-#### removeDoctype
+### removeDoctype
 
 Removes DOCTYPE declaration.
 
 Enabled by default in SVGO Compressor.
 
-#### removeEditorsNSData
+### removeEditorsNSData
 
 Removes editors namespaces, elements and attributes.
 
 This is on by default in SVGO Compressor for historical reasons, but it's not really needed since Sketch no longer outputs an editor namespace.
 
-#### removeElementsByAttr
+### removeElementsByAttr
 
 Removes arbitrary SVG elements by ID or className.
 
@@ -371,13 +367,13 @@ will remove all the elements whose `id` is `elementID`.
 
 Off by default for obvious reasons in SVGO Compressor.
 
-#### removeEmptyAttrs
+### removeEmptyAttrs
 
 Removes attributes with empty values.
 
 On by default in SVGO Compressor.
 
-#### removeEmptyContainers
+### removeEmptyContainers
 
 Removes empty container elements.
 
@@ -395,13 +391,13 @@ into _nothing_.
 
 On by default in SVGO Compressor.
 
-#### removeEmptyText
+### removeEmptyText
 
 Removes empty Text elements.
 
 On by default in SVGO Compressor.
 
-#### removeHiddenElems
+### removeHiddenElems
 
 Removes hidden elements with disabled rendering:
 
@@ -418,61 +414,61 @@ Removes hidden elements with disabled rendering:
 
 Off by default in SVGO Compressor, since Sketch does not export hidden elements.
 
-#### removeMetadata
+### removeMetadata
 
 Removes `<metadata>`.
 
 On by default in SVGO Compressor.
 
-#### removeNonInheritableGroupAttrs
+### removeNonInheritableGroupAttrs
 
 Removes non-inheritable group's "presentation" attributes.
 
 On by default in SVGO Compressor.
 
-#### removeRasterImages
+### removeRasterImages
 
 Removes raster images references in `<image>`.
 
 Off by default in SVGO Compressor, since it's pretty destructive.
 
-#### removeStyleElement
+### removeStyleElement
 
 Removes the `<style>` element.
 
 Off by default in SVGO Compressor.
 
-#### removeTitle
+### removeTitle
 
 Removes `<title>`.
 
 On by default in SVGO Compressor, but you may consider disabling it for accessibility reasons.
 
-#### removeUnknownsAndDefaults
+### removeUnknownsAndDefaults
 
 Removes unknown elements' content and attributes, removes attrs with default values.
 
 On by default in SVGO Compressor.
 
-#### removeUnusedNS
+### removeUnusedNS
 
 Removes unused namespaces declaration.
 
 On by default in SVGO Compressor.
 
-#### removeUselessDefs
+### removeUselessDefs
 
 Removes content of defs and properties that aren't rendered directly without ids.
 
 On by default in SVGO Compressor.
 
-#### removeUselessStrokeAndFill
+### removeUselessStrokeAndFill
 
 Removes useless stroke and fill attrs.
 
 On by default in SVGO Compressor.
 
-#### removeViewBox
+### removeViewBox
 
 Removes viewBox attr which coincides with a width/height box.
 
@@ -490,7 +486,7 @@ into this
 
 Off by default in SVGO Compressor.
 
-#### removeXMLNS
+### removeXMLNS
 
 Removes the `xmlns` attribute when present.
 
@@ -508,19 +504,19 @@ into this
 
 On by default in SVGO Compressor.
 
-#### removeXMLProcInst
+### removeXMLProcInst
 
 Removes XML Processing Instruction (the `<?xml version="1.0" encoding="UTF-8"?>` bit).
 
 On by default in SVGO Compressor.
 
-#### sortAttrs
+### sortAttrs
 
 Sorts element attributes to improve readability.
 
 On by default in SVGO Compressor.
 
-#### transformsWithOnePath
+### transformsWithOnePath
 
 Performs a set of operations on SVG with one path inside.
 
