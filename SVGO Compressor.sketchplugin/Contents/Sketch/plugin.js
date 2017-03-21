@@ -29919,6 +29919,8 @@ Object.defineProperty(exports, "__esModule", {
   value: true
 });
 var svgo = require('svgo');
+
+// TODO: Read this file list from disk
 var addAttributesToSVGElement = require('svgo/plugins/addAttributesToSVGElement');
 var addClassesToSVGElement = require('svgo/plugins/addClassesToSVGElement');
 var cleanupAttrs = require('svgo/plugins/cleanupAttrs');
@@ -29967,7 +29969,7 @@ var SketchPlugin = exports.SketchPlugin = {
   description: "A Plugin that compresses SVG assets using SVGO, right when you export them. This Plugin *requires* Sketch 3.8.",
   author: "Ale Muñoz",
   authorEmail: "ale@sketchapp.com",
-  version: "1.3.6",
+  version: "1.3.7",
   identifier: "com.sketchapp.plugins.svgo-compressor",
   homepage: "https:/github.com/BohemianCoding/svgo-compressor",
   compatibleVersion: 3.8,
@@ -29996,6 +29998,7 @@ var SketchPlugin = exports.SketchPlugin = {
           // with a 'name' key and a 'params' key (optional, only needed if you want to change any of the default params for a plugin)
           // 
           // This is the list of SVGO Plugins available as of 2016-05-26:
+          // TODO: keep this list updated automatically
           // 
           // - addAttributesToSVGElement - adds attributes to an outer <svg> element
           // - addClassesToSVGElement - add classnames to an outer <svg> element
@@ -30044,7 +30047,7 @@ var SketchPlugin = exports.SketchPlugin = {
             "comment": "This is the settings file for the SVGO Compressor Plugin. For more info, please check <https://github.com/BohemianCoding/svgo-compressor>",
             "pretty": true,
             "indent": 2,
-            "plugins": [{ "name": "cleanupIDs" }, { "name": "cleanupListOfValues" }, { "name": "cleanupNumericValues" }, { "name": "collapseGroups" }, { "name": "convertColors" }, { "name": "convertStyleToAttrs" }, { "name": "convertTransform" }, { "name": "mergePaths" }, { "name": "minifyStyles" }, { "name": "removeComments" }, { "name": "removeDesc", "params": { "removeAny": true } }, { "name": "removeDoctype" }, { "name": "removeEditorsNSData" }, { "name": "removeEmptyAttrs" }, { "name": "removeEmptyContainers" }, { "name": "removeEmptyText" }, { "name": "removeMetadata" }, { "name": "removeNonInheritableGroupAttrs" }, { "name": "removeTitle" }, { "name": "removeUnknownsAndDefaults" }, { "name": "removeUnusedNS" }, { "name": "removeUselessDefs" }, { "name": "removeUselessStrokeAndFill" }, { "name": "removeXMLNS" }, { "name": "removeXMLProcInst" }, { "name": "sortAttrs" }]
+            "plugins": [{ "name": "cleanupIDs" }, { "name": "cleanupListOfValues" }, { "name": "cleanupNumericValues" }, { "name": "collapseGroups" }, { "name": "convertColors" }, { "name": "convertStyleToAttrs" }, { "name": "convertTransform" }, { "name": "mergePaths" }, { "name": "minifyStyles" }, { "name": "removeComments" }, { "name": "removeDesc", "params": { "removeAny": true } }, { "name": "removeDoctype" }, { "name": "removeEditorsNSData" }, { "name": "removeEmptyAttrs" }, { "name": "removeEmptyContainers" }, { "name": "removeEmptyText" }, { "name": "removeMetadata" }, { "name": "removeNonInheritableGroupAttrs" }, { "name": "removeTitle" }, { "name": "removeUnknownsAndDefaults" }, { "name": "removeUnusedNS" }, { "name": "removeUselessDefs" }, { "name": "removeUselessStrokeAndFill" }, { "name": "removeXMLProcInst" }, { "name": "sortAttrs" }]
           };
           NSString.stringWithString(JSON.stringify(svgoJSON, null, '  ')).writeToFile_atomically_encoding_error(svgoJSONFilePath, true, NSUTF8StringEncoding, nil);
         }
@@ -30101,6 +30104,7 @@ var SketchPlugin = exports.SketchPlugin = {
           }
 
           if (filesToCompress.length > 0) {
+            log('Let‘s go…');
             var originalTotalSize = 0;
             var compressedTotalSize = 0;
             if (svgoJSON.pretty == null) {
@@ -30116,14 +30120,20 @@ var SketchPlugin = exports.SketchPlugin = {
                 indent: svgoJSON.indent
               },
               plugins: parsedSVGOPlugins
+              // multipass: true
+              // floatPrecision: 1
             });
             for (var i = 0; i < filesToCompress.length; i++) {
               var currentFile = filesToCompress[i];
               var svgString = "" + NSString.stringWithContentsOfFile_encoding_error(currentFile, NSUTF8StringEncoding, nil);
               originalTotalSize += svgString.length;
+
+              // Hacks for plugins
               for (var pluginIndex = 0; pluginIndex < svgCompressor.config.plugins[0].length; pluginIndex++) {
                 var plugin = svgCompressor.config.plugins[0][pluginIndex];
+                // cleanupIDs
                 if (plugin.pluginName == "cleanupIDs") {
+                  // Alternatively, we could use an UUID: `NSUUID.UUID().UUIDString()`
                   var prefix = currentFile.lastPathComponent().stringByDeletingPathExtension().replace(/\s+/g, '-').toLowerCase() + "-";
                   log('Setting cleanupIDs prefix to: ' + prefix);
                   plugin.params['prefix'] = prefix;
@@ -30155,7 +30165,7 @@ __globals.___svgo_run_handler_ = function (context, params) {
     "description": "A Plugin that compresses SVG assets using SVGO, right when you export them. This Plugin *requires* Sketch 3.8.",
     "author": "Ale Muñoz",
     "authorEmail": "ale@sketchapp.com",
-    "version": "1.3.6",
+    "version": "1.3.7",
     "identifier": "com.sketchapp.plugins.svgo-compressor",
     "homepage": "https:/github.com/BohemianCoding/svgo-compressor",
     "compatibleVersion": 3.8,
