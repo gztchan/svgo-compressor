@@ -44,6 +44,18 @@ var removeXMLProcInst              = require('svgo/plugins/removeXMLProcInst')
 var sortAttrs                      = require('svgo/plugins/sortAttrs')
 var transformsWithOnePath          = require('svgo/plugins/transformsWithOnePath')
 
+function normalizeNotation(string) {
+  let temp = string;
+  const regex = new RegExp('-?[0-9]*.[0-9]{8}e-[0-9]*', 'g');
+  let match = null;
+  while (match = temp.match(regex)) {
+    if (match && match[0]) {
+      temp = temp.replace(match[0], Number(match[0]).toFixed(2));
+    }
+  }
+  return temp;
+}
+
 export const SketchPlugin = {
   name: "SVGO Compressor",
   description: "A Plugin that compresses SVG assets using SVGO, right when you export them. This Plugin *requires* Sketch 3.8.",
@@ -241,7 +253,7 @@ export const SketchPlugin = {
                   plugin.params['prefix'] = prefix
                 }
               }
-              svgCompressor.optimize(svgString, function(result) {
+              svgCompressor.optimize(normalizeNotation(svgString), function(result) {
                 compressedTotalSize += result.data.length
                 NSString.stringWithString(result.data).writeToFile_atomically_encoding_error(currentFile, true, NSUTF8StringEncoding, nil)
               })
